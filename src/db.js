@@ -3,7 +3,7 @@
 import { db } from "./firebase";
 import {
   doc, getDoc, setDoc, collection,
-  query, orderBy, limit, getDocs, onSnapshot,
+  query, orderBy, limit, getDocs,
 } from "firebase/firestore";
 
 // ── Today's log ──────────────────────────────────────────────

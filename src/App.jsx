@@ -6,7 +6,7 @@ import { loadTodayLog, saveTodayLog, loadHistory } from "./db";
 import AuthScreen from "./AuthScreen";
 import {
   defaultNotifSettings, requestNotifPermission, getPermissionStatus,
-  sendTestNotification, scheduleNotifications,
+  sendTestNotification,
 } from "./useNotifications";
 
 // ── Constants ────────────────────────────────────────────────
