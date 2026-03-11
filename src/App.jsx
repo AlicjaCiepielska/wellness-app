@@ -681,67 +681,84 @@ function Onboarding({ onDone }) {
 }
 
 // ── MAIN APP ───────────────────────────────────────────────────
+
+// ── MAIN APP ───────────────────────────────────────────────────
 function MainApp({ profile: init, user, onSignOut }) {
-  const [habits,       setHabits]       = useState(init.habits);
-  const [goals,        setGoals]        = useState(init.goals);
-  const [selfCarePool, setSelfCarePool] = useState(init.selfCarePool);
-  const [weights,      setWeights]      = useState(init.weights || {...DEFAULT_WEIGHTS});
-  const [bigGoals,     setBigGoals]     = useState(init.bigGoals || []);
+  const [habits,       setHabits]       = useState(init.habits       || ["water","steps","sleep","mood"]);
+  const [goals,        setGoals]        = useState(init.goals        || {...DEFAULT_GOALS});
+  const [selfCarePool, setSelfCarePool] = useState(init.selfCarePool || []);
+  const [weights,      setWeights]      = useState(init.weights      || {...DEFAULT_WEIGHTS});
+  const [bigGoals,     setBigGoals]     = useState(init.bigGoals     || []);
+
   const [log, setLog] = useState({
-    water:0,steps:0,sweets:null,foodQuality:null,workout:false,workoutTypes:[],
-    screenTime:0,socialMedia:0,learningTime:0,learningProductivity:0,
-    sleep:0,selfCare:[],mood:"",readingPages:0,runKm:0,runDuration:"",runFeel:"",
+    water:0, steps:0, sweets:null, foodQuality:null, workout:false, workoutTypes:[],
+    screenTime:0, socialMedia:0, learningTime:0, learningProductivity:0,
+    sleep:0, selfCare:[], mood:"", readingPages:0, runKm:0, runDuration:"", runFeel:"",
   });
+
   const [activeTab, setActiveTab] = useState("today");
   const [menuOpen,  setMenuOpen]  = useState(false);
-  const [saving,    setSaving]    = useState(false);
-  const saveTimer = useRef(null);
+  const [saveStatus, setSaveStatus] = useState(""); // "saving" | "saved" | ""
+  const saveLogTimer = useRef(null);
 
-  // Load today's log from Firestore on mount
+  // ── LOAD today's log on mount ──────────────────────────────
   useEffect(() => {
     if (!user) return;
-    loadTodayLog(user.uid).then(data => { if (data) setLog(l => ({...l, ...data})); });
+    console.log("[loadTodayLog] loading for uid:", user.uid);
+    loadTodayLog(user.uid).then(data => {
+      console.log("[loadTodayLog] result:", data);
+      if (data) {
+        const { updatedAt, ...rest } = data;
+        setLog(l => ({ ...l, ...rest }));
+      }
+    });
   }, [user]);
 
-  // Auto-save log with debounce
-  const scheduleLogSave = useCallback((newLog) => {
+  // ── SAVE log (debounced 1.5s) ──────────────────────────────
+  const saveLog = useCallback((newLog) => {
     if (!user) return;
-    clearTimeout(saveTimer.current);
-    setSaving(true);
-    saveTimer.current = setTimeout(async () => {
+    clearTimeout(saveLogTimer.current);
+    setSaveStatus("saving");
+    saveLogTimer.current = setTimeout(async () => {
       await saveTodayLog(user.uid, newLog);
-      setSaving(false);
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus(""), 2000);
     }, 1500);
   }, [user]);
 
-  // Keep refs up to date so saveProfileData always has latest values
-  const habitsRef   = useRef(habits);
-  const goalsRef    = useRef(goals);
-  const scRef       = useRef(selfCarePool);
-  const weightsRef  = useRef(weights);
-  const bgRef       = useRef(bigGoals);
-  useEffect(() => { habitsRef.current  = habits;       }, [habits]);
-  useEffect(() => { goalsRef.current   = goals;        }, [goals]);
-  useEffect(() => { scRef.current      = selfCarePool; }, [selfCarePool]);
-  useEffect(() => { weightsRef.current = weights;      }, [weights]);
-  useEffect(() => { bgRef.current      = bigGoals;     }, [bigGoals]);
-
-  const saveProfileData = useCallback(async (updates) => {
+  // ── SAVE profile ─────────────────────────────────────────────
+  // We pass the ENTIRE new profile as `patch` — no stale state risk
+  const saveProf = useCallback(async (newProfile) => {
     if (!user) return;
-    const current = {
-      habits:      habitsRef.current,
-      goals:       goalsRef.current,
-      selfCarePool:scRef.current,
-      weights:     weightsRef.current,
-      bigGoals:    bgRef.current,
-    };
-    await saveProfile(user.uid, { ...current, ...updates });
+    console.log("[saveProf] saving to Firestore:", JSON.stringify(newProfile).slice(0,120));
+    await saveProfile(user.uid, newProfile);
+    console.log("[saveProf] done");
   }, [user]);
 
+  // Helper: build full profile object from current state
+  const buildProfile = (overrides) => ({
+    habits, goals, selfCarePool, weights, bigGoals, ...overrides
+  });
+
+  // ── Helpers ────────────────────────────────────────────────
+  const update = (k, v) => setLog(p => {
+    const next = { ...p, [k]: v };
+    saveLog(next);
+    return next;
+  });
+
+  const toggleSC = (item) => update(
+    "selfCare",
+    log.selfCare.includes(item) ? log.selfCare.filter(s => s !== item) : [...log.selfCare, item]
+  );
+
+  const fmt = m => {
+    if (!m || m === 0) return "0m";
+    const h = Math.floor(m / 60), mn = m % 60;
+    return h > 0 ? `${h}h${mn > 0 ? ` ${mn}m` : ""}` : mn + "m";
+  };
+
   const score = calcScore(log, habits, goals, weights);
-  const update = (k,v) => setLog(p => { const n={...p,[k]:v}; scheduleLogSave(n); return n; });
-  const toggleSC = (item) => update("selfCare", log.selfCare.includes(item)?log.selfCare.filter(s=>s!==item):[...log.selfCare,item]);
-  const fmt = m => { if(!m||m===0)return"0m"; const h=Math.floor(m/60),mn=m%60; return h>0?`${h}h${mn>0?` ${mn}m`:""}`:mn+"m"; };
   const scoreLabel = score>=85?"glowing ✨":score>=65?"on track 🌿":score>=40?"building habits 🌸":score>=15?"starting fresh 🌱":"let's begin 🤍";
   const G = goals;
 
@@ -786,13 +803,15 @@ function MainApp({ profile: init, user, onSignOut }) {
                 </button>
               ))}
               <div style={{margin:"5px 0",borderTop:"1px solid rgba(139,119,95,0.09)"}}/>
-              <button style={{display:"block",width:"100%",padding:"8px 13px",borderRadius:"10px",border:"none",background:"transparent",color:"#c47a7a",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",textAlign:"left",fontStyle:"italic"}} onClick={onSignOut}>sign out</button>
+              <button onClick={onSignOut} style={{display:"block",width:"100%",padding:"8px 13px",borderRadius:"10px",border:"none",background:"transparent",color:"#c47a7a",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",textAlign:"left",fontStyle:"italic"}}>sign out</button>
             </div>
           )}
         </div>
         <div style={{fontSize:"9px",letterSpacing:"3px",textTransform:"uppercase",color:"#8b7763",marginBottom:"3px"}}>{new Date().toLocaleDateString("en-US",{weekday:"long",day:"numeric",month:"long"})}</div>
         <h1 style={{fontSize:"27px",fontWeight:"300",color:"#3d3530",margin:"0 0 1px",letterSpacing:"0.5px"}}>wellness</h1>
-        <p style={{fontSize:"12px",color:"#a89880",fontStyle:"italic",margin:0}}>{saving?"saving...":"your daily ritual"}</p>
+        <p style={{fontSize:"12px",color:"#a89880",fontStyle:"italic",margin:0}}>
+          {saveStatus==="saving"?"saving... 🌿":saveStatus==="saved"?"saved ✓":"your daily ritual"}
+        </p>
         <BlobCreature score={score}/>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",margin:"6px auto 0"}}>
           <div style={{position:"relative",width:"64px",height:"64px"}}>
@@ -864,7 +883,7 @@ function MainApp({ profile: init, user, onSignOut }) {
           <div style={S.sTitle}>🌙 sleep</div>
           <div style={S.iRow}><span style={S.lbl}>hours</span><input type="number" step="0.5" placeholder="0" value={log.sleep||""} onChange={e=>update("sleep",+e.target.value)} style={{...S.inp,maxWidth:"88px"}}/><span style={S.hint}>{log.sleep||0}h / {G.sleep||8}h</span></div>
           <div style={S.bar}><div style={S.fill(((log.sleep||0)/(G.sleep||8))*100,"linear-gradient(90deg,#b8c4e8,#8a9ed4)")}/></div>
-          <div style={S.hint}>{!log.sleep?"log last night's sleep 😴":log.sleep<6?"that's rough, rest up 🌙":log.sleep>=(G.sleep||8)?"beautifully rested ✨":"pretty good 🌿"}</div>
+          <div style={S.hint}>{!log.sleep?"log last night's sleep 😴":log.sleep<6?"that's rough 🌙":log.sleep>=(G.sleep||8)?"beautifully rested ✨":"pretty good 🌿"}</div>
         </div>}
 
         {habits.includes("learning")&&<div style={S.section}>
@@ -907,7 +926,7 @@ function MainApp({ profile: init, user, onSignOut }) {
             {[1,2,3,4,5].map(n=>(
               <button key={n} onClick={()=>update("foodQuality",log.foodQuality===n?null:n)} style={S.scaleBtn(log.foodQuality===n)}>
                 <span>{["🌿","🙂","😐","😕","😩"][n-1]}</span>
-                <span style={{fontSize:"9px",letterSpacing:"0.5px"}}>{["great","good","ok","meh","bad"][n-1]}</span>
+                <span style={{fontSize:"9px"}}>{["great","good","ok","meh","bad"][n-1]}</span>
               </button>
             ))}
           </div>
@@ -936,14 +955,14 @@ function MainApp({ profile: init, user, onSignOut }) {
         <div style={S.sTitle}>✨ today at a glance</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"13px"}}>
           {[
-            habits.includes("water")      && {l:"water",      v:`${log.water} glasses`,      c:"rgba(168,212,230,0.16)"},
-            habits.includes("steps")      && {l:"steps",      v:(log.steps||0).toLocaleString(),c:"rgba(138,184,144,0.16)"},
-            habits.includes("sleep")      && {l:"sleep",      v:`${log.sleep||0}h`,          c:"rgba(184,196,232,0.16)"},
-            habits.includes("learning")   && {l:"learning",   v:fmt(log.learningTime),       c:"rgba(196,218,168,0.16)"},
-            habits.includes("reading")    && {l:"reading",    v:`${log.readingPages||0} pages`,c:"rgba(212,196,232,0.16)"},
-            habits.includes("running")    && {l:"running",    v:`${log.runKm||0} km`,        c:"rgba(168,196,230,0.16)"},
-            habits.includes("screenTime") && {l:"screen",     v:fmt(log.screenTime),         c:"rgba(212,168,184,0.16)"},
-            habits.includes("selfCare")   && {l:"self care",  v:`${log.selfCare?.length||0} rituals`,c:"rgba(232,218,196,0.16)"},
+            habits.includes("water")      && {l:"water",     v:`${log.water} glasses`,        c:"rgba(168,212,230,0.16)"},
+            habits.includes("steps")      && {l:"steps",     v:(log.steps||0).toLocaleString(),c:"rgba(138,184,144,0.16)"},
+            habits.includes("sleep")      && {l:"sleep",     v:`${log.sleep||0}h`,            c:"rgba(184,196,232,0.16)"},
+            habits.includes("learning")   && {l:"learning",  v:fmt(log.learningTime),          c:"rgba(196,218,168,0.16)"},
+            habits.includes("reading")    && {l:"reading",   v:`${log.readingPages||0} pages`, c:"rgba(212,196,232,0.16)"},
+            habits.includes("running")    && {l:"running",   v:`${log.runKm||0} km`,           c:"rgba(168,196,230,0.16)"},
+            habits.includes("screenTime") && {l:"screen",    v:fmt(log.screenTime),            c:"rgba(212,168,184,0.16)"},
+            habits.includes("selfCare")   && {l:"self care", v:`${log.selfCare?.length||0} rituals`,c:"rgba(232,218,196,0.16)"},
           ].filter(Boolean).map(({l,v,c})=>(
             <div key={l} style={S.statCard(c)}>
               <div style={{fontSize:"18px",fontWeight:"300",color:"#5a7a5a",lineHeight:1}}>{v}</div>
@@ -952,19 +971,27 @@ function MainApp({ profile: init, user, onSignOut }) {
           ))}
         </div>
         {log.workout&&log.workoutTypes?.length>0&&<div style={{padding:"8px 13px",background:"rgba(138,184,144,0.09)",borderRadius:"10px",fontSize:"12px",color:"#5a7a5a",fontStyle:"italic",marginBottom:"8px"}}>💪 {log.workoutTypes.join(", ")} ✓</div>}
-        {log.runKm>0&&<div style={{padding:"8px 13px",background:"rgba(168,196,230,0.09)",borderRadius:"10px",fontSize:"12px",color:"#5a7a5a",fontStyle:"italic",marginBottom:"8px"}}>🏃 {log.runKm}km {log.runDuration?`· ${log.runDuration}`:""} {log.runFeel?`· ${log.runFeel}`:""}</div>}
+        {log.runKm>0&&<div style={{padding:"8px 13px",background:"rgba(168,196,230,0.09)",borderRadius:"10px",fontSize:"12px",color:"#5a7a5a",fontStyle:"italic",marginBottom:"8px"}}>🏃 {log.runKm}km{log.runDuration?` · ${log.runDuration}`:""}{log.runFeel?` · ${log.runFeel}`:""}</div>}
         {log.mood&&<div style={{textAlign:"center",fontSize:"14px",color:"#8b7763",fontStyle:"italic",marginBottom:"9px"}}>{log.mood}</div>}
         {log.selfCare?.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"5px",marginBottom:"11px"}}>{log.selfCare.map(s=><span key={s} style={{padding:"3px 9px",borderRadius:"10px",background:"rgba(138,184,144,0.1)",border:"1px solid rgba(90,122,90,0.13)",fontSize:"11px",color:"#4a6e4a"}}>{s}</span>)}</div>}
         <div style={{borderTop:"1px solid rgba(139,119,95,0.1)",paddingTop:"13px",textAlign:"center"}}>
           <div style={{fontSize:"44px",fontWeight:"300",color:"#5a7a5a",lineHeight:1}}>{score}</div>
           <div style={{fontSize:"12px",color:"#8b7763",fontStyle:"italic",marginTop:"3px"}}>{scoreLabel}</div>
-          <div style={{height:"5px",borderRadius:"3px",background:"rgba(139,119,95,0.08)",overflow:"hidden",marginTop:"9px"}}><div style={{height:"100%",width:score+"%",background:"linear-gradient(90deg,#8ab890,#5a7a5a)",borderRadius:"3px",transition:"width 0.8s"}}/></div>
+          <div style={{height:"5px",borderRadius:"3px",background:"rgba(139,119,95,0.08)",overflow:"hidden",marginTop:"9px"}}>
+            <div style={{height:"100%",width:score+"%",background:"linear-gradient(90deg,#8ab890,#5a7a5a)",borderRadius:"3px",transition:"width 0.8s"}}/>
+          </div>
         </div>
       </div>}
 
-      {activeTab==="goals"&&<GoalsTab goals={bigGoals} setGoals={g=>{setBigGoals(g);saveProfileData({bigGoals:g});}} log={log} habits={habits}/>}
+      {activeTab==="goals"&&<GoalsTab goals={bigGoals} setGoals={g=>{setBigGoals(g);saveProf(buildProfile({bigGoals:g}));}} log={log} habits={habits}/>}
       {activeTab==="history"&&<div style={S.section}><div style={S.sTitle}>📓 history</div><div style={{textAlign:"center",padding:"28px",color:"#8b7763",fontStyle:"italic"}}>your journey starts today 🌱</div></div>}
-      {activeTab==="settings"&&<SettingsTab habits={habits} setHabits={h=>{setHabits(h);saveProfileData({habits:h});}} goals={goals} setGoals={g=>{setGoals(g);saveProfileData({goals:g});}} selfCarePool={selfCarePool} setSelfCarePool={s=>{setSelfCarePool(s);saveProfileData({selfCarePool:s});}} weights={weights} setWeights={w=>{setWeights(w);saveProfileData({weights:w});}} onSignOut={onSignOut}/>}
+      {activeTab==="settings"&&<SettingsTab
+        habits={habits}      setHabits={h=>{setHabits(h);saveProf(buildProfile({habits:h}));}}
+        goals={goals}        setGoals={g=>{setGoals(g);saveProf(buildProfile({goals:g}));}}
+        selfCarePool={selfCarePool} setSelfCarePool={s=>{setSelfCarePool(s);saveProf(buildProfile({selfCarePool:s}));}}
+        weights={weights}    setWeights={w=>{setWeights(w);saveProf(buildProfile({weights:w}));}}
+        onSignOut={onSignOut}
+      />}
 
       {/* BOTTOM NAV */}
       <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(250,248,243,0.96)",backdropFilter:"blur(12px)",borderTop:"1px solid rgba(139,119,95,0.09)",display:"flex",justifyContent:"center",padding:"5px 0 10px"}}>
@@ -979,21 +1006,17 @@ function MainApp({ profile: init, user, onSignOut }) {
   );
 }
 
-// ── FIREBASE ROOT ──────────────────────────────────────────────
+// ── ROOT ────────────────────────────────────────────────────────
 export default function Root() {
-  const [user,        setUser]        = useState(undefined); // undefined = loading
-  const [profile,     setProfile]     = useState(null);
-  const [loadingProf, setLoadingProf] = useState(false);
+  const [user,         setUser]        = useState(undefined);
+  const [profile,      setProfile]     = useState(undefined);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (u) => {
-      setUser(u);
+      setUser(u || null);
       if (u) {
-        setLoadingProf(true);
         const prof = await loadProfile(u.uid);
-        if (prof?.habits) setProfile(prof);
-        else setProfile(null); // trigger onboarding
-        setLoadingProf(false);
+        setProfile(prof?.habits ? prof : null);
       } else {
         setProfile(null);
       }
@@ -1001,24 +1024,27 @@ export default function Root() {
   }, []);
 
   const handleOnboardingDone = async (prof) => {
-    if (user) await saveProfile(user.uid, prof);
+    if (auth.currentUser) await saveProfile(auth.currentUser.uid, prof);
     setProfile(prof);
   };
 
-  const handleSignOut = async () => { await signOut(auth); setProfile(null); };
+  const handleSignOut = async () => {
+    await signOut(auth);
+    setUser(null);
+    setProfile(null);
+  };
 
-  // Loading
-  if (user === undefined || loadingProf) return (
+  // loading
+  if (user === undefined || profile === undefined) return (
     <div style={{minHeight:"100vh",background:"linear-gradient(155deg,#faf8f3,#f0ebe0,#e9f0e9)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Georgia,serif"}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:"32px",marginBottom:"12px",animation:"pulse 2s ease-in-out infinite"}}>🌿</div>
+        <div style={{fontSize:"32px",marginBottom:"12px"}}>🌿</div>
         <div style={{fontSize:"13px",color:"#8b7763",fontStyle:"italic"}}>loading your wellness...</div>
-        <style>{`@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}`}</style>
       </div>
     </div>
   );
 
-  if (!user) return <AuthScreen/>;
+  if (!user)    return <AuthScreen/>;
   if (!profile) return <Onboarding onDone={handleOnboardingDone}/>;
   return <MainApp profile={profile} user={user} onSignOut={handleSignOut}/>;
 }
