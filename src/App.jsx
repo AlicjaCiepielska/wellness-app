@@ -13,7 +13,7 @@ const ALL_HABITS = [
   { id:"sleep",      label:"sleep",        emoji:"🌙", desc:"rest & recovery",      unit:"hours",   goalKey:"sleep" },
   { id:"learning",   label:"learning",     emoji:"📚", desc:"study & courses",      unit:"min",     goalKey:"learning" },
   { id:"reading",    label:"reading",      emoji:"📖", desc:"books & articles",     unit:"pages",   goalKey:"reading" },
-  { id:"sweets",     label:"sweets",       emoji:"🍫", desc:"sugar intake",         unit:"treats",  goalKey:null },
+  { id:"sweets",     label:"sweets",       emoji:"🍫", desc:"sugar intake",         unit:"clean days", goalKey:"sweets" },
   { id:"food",       label:"food quality", emoji:"🥗", desc:"how well did you eat?",unit:"/5",      goalKey:null },
   { id:"screenTime", label:"screen time",  emoji:"📱", desc:"digital wellness",     unit:"min",     goalKey:"screenTime" },
   { id:"selfCare",   label:"self care",    emoji:"🌸", desc:"rituals & routines",   unit:"rituals", goalKey:null },
@@ -41,51 +41,53 @@ function calcScore(log, habits, goals, weights) {
 
   const add = (habitId, achievement) => {
     const w = weights[habitId] ?? 5;
-    earned += Math.min(achievement, 1) * w;
+    earned += Math.min(Math.max(achievement, 0), 1) * w;
     totalW += w;
   };
 
-  if (habits.includes("water") && log.water > 0)
-    add("water", log.water / (goals.water || 8));
-  else if (habits.includes("water")) { totalW += weights.water ?? 5; }
+  if (habits.includes("water"))
+    add("water", log.water > 0 ? log.water / (goals.water || 8) : 0);
 
-  if (habits.includes("steps") && log.steps > 0)
-    add("steps", log.steps / (goals.steps || 10000));
-  else if (habits.includes("steps")) { totalW += weights.steps ?? 5; }
+  if (habits.includes("steps"))
+    add("steps", log.steps > 0 ? log.steps / (goals.steps || 10000) : 0);
 
-  if (habits.includes("workout")) add("workout", log.workout ? 1 : 0);
+  if (habits.includes("workout"))
+    add("workout", log.workout ? 1 : 0);
 
-  if (habits.includes("running") && log.runKm > 0)
-    add("running", log.runKm / (goals.running || 5));
-  else if (habits.includes("running")) { totalW += weights.running ?? 5; }
+  if (habits.includes("running"))
+    add("running", log.runKm > 0 ? log.runKm / (goals.running || 5) : 0);
 
-  if (habits.includes("sleep") && log.sleep > 0)
-    add("sleep", log.sleep / (goals.sleep || 8));
-  else if (habits.includes("sleep")) { totalW += weights.sleep ?? 5; }
+  if (habits.includes("sleep"))
+    add("sleep", log.sleep > 0 ? log.sleep / (goals.sleep || 8) : 0);
 
-  if (habits.includes("learning") && log.learningTime > 0)
-    add("learning", (log.learningTime / (goals.learning || 60)) * (0.5 + ((log.learningProductivity||5)/10)*0.5));
-  else if (habits.includes("learning")) { totalW += weights.learning ?? 5; }
+  if (habits.includes("learning"))
+    add("learning", log.learningTime > 0
+      ? (log.learningTime / (goals.learning || 60)) * (0.5 + ((log.learningProductivity||5)/10)*0.5)
+      : 0);
 
-  if (habits.includes("reading") && log.readingPages > 0)
-    add("reading", log.readingPages / (goals.reading || 20));
-  else if (habits.includes("reading")) { totalW += weights.reading ?? 5; }
+  if (habits.includes("reading"))
+    add("reading", log.readingPages > 0 ? log.readingPages / (goals.reading || 20) : 0);
 
   if (habits.includes("sweets") && log.sweets !== null)
+    // 0 sweets = 1.0 (perfect), 4+ sweets = 0.0
     add("sweets", Math.max(0, 1 - log.sweets / 4));
-  else if (habits.includes("sweets")) { totalW += weights.sweets ?? 5; }
+  else if (habits.includes("sweets")) add("sweets", 0.5); // not logged = neutral
 
   if (habits.includes("food") && log.foodQuality !== null)
-    add("food", log.foodQuality / 5);
-  else if (habits.includes("food")) { totalW += weights.food ?? 5; }
+    // scale 1-5 where 1=great → score 1.0, 5=bad → score 0.0
+    add("food", 1 - (log.foodQuality - 1) / 4);
+  else if (habits.includes("food")) add("food", 0.5); // not logged = neutral
 
-  if (habits.includes("screenTime") && log.screenTime > 0)
-    add("screenTime", Math.max(0, 1 - Math.max(0, (log.screenTime/60 - 2)/3)));
-  else if (habits.includes("screenTime")) { totalW += weights.screenTime ?? 5; }
+  if (habits.includes("screenTime") && log.screenTime > 0) {
+    // socialMedia is the main penalty: limit = 60min. Over limit = lose points.
+    const social = log.socialMedia || 0;
+    const socialLimit = 60;
+    const socialScore = social <= socialLimit ? 1 : Math.max(0, 1 - (social - socialLimit) / 120);
+    add("screenTime", socialScore);
+  } else if (habits.includes("screenTime")) add("screenTime", 0.5);
 
-  if (habits.includes("selfCare") && (log.selfCare?.length||0) > 0)
-    add("selfCare", Math.min((log.selfCare?.length||0)/3, 1));
-  else if (habits.includes("selfCare")) { totalW += weights.selfCare ?? 5; }
+  if (habits.includes("selfCare"))
+    add("selfCare", log.selfCare?.length > 0 ? Math.min((log.selfCare.length)/3, 1) : 0);
 
   if (totalW === 0) return 0;
   return Math.min(Math.round((earned / totalW) * 100), 100);
@@ -103,7 +105,26 @@ function getHabitValue(log, habitId) {
     case "reading":    return log.readingPages || 0;
     case "screenTime": return log.screenTime || 0;
     case "selfCare":   return log.selfCare?.length || 0;
+    // sweets: returns 1 if logged as 0 (clean day), 0 otherwise
+    case "sweets":     return log.sweets === 0 ? 1 : 0;
     default:           return 0;
+  }
+}
+
+// For goals display label — what "1 unit" means per habit
+function getHabitUnit(habitId) {
+  switch(habitId) {
+    case "water":      return "glasses";
+    case "steps":      return "steps";
+    case "workout":    return "sessions";
+    case "running":    return "km";
+    case "sleep":      return "hours";
+    case "learning":   return "min";
+    case "reading":    return "pages";
+    case "screenTime": return "min";
+    case "selfCare":   return "rituals";
+    case "sweets":     return "clean days";
+    default:           return "";
   }
 }
 
@@ -698,7 +719,7 @@ function MainApp({ profile: init, user, onSignOut }) {
 
   const [activeTab, setActiveTab] = useState("today");
   const [menuOpen,  setMenuOpen]  = useState(false);
-  const [saveStatus, setSaveStatus] = useState(""); // "saving" | "saved" | ""
+
   const saveLogTimer = useRef(null);
 
   // ── LOAD today's log on mount ──────────────────────────────
@@ -718,27 +739,39 @@ function MainApp({ profile: init, user, onSignOut }) {
   const saveLog = useCallback((newLog) => {
     if (!user) return;
     clearTimeout(saveLogTimer.current);
-    setSaveStatus("saving");
     saveLogTimer.current = setTimeout(async () => {
       await saveTodayLog(user.uid, newLog);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus(""), 2000);
     }, 1500);
   }, [user]);
 
   // ── SAVE profile ─────────────────────────────────────────────
-  // We pass the ENTIRE new profile as `patch` — no stale state risk
-  const saveProf = useCallback(async (newProfile) => {
+  // Store latest values in refs to avoid stale closures
+  const habitsRef      = useRef(habits);
+  const goalsRef       = useRef(goals);
+  const scPoolRef      = useRef(selfCarePool);
+  const weightsRef     = useRef(weights);
+  const bigGoalsRef    = useRef(bigGoals);
+  useEffect(() => { habitsRef.current   = habits;       }, [habits]);
+  useEffect(() => { goalsRef.current    = goals;        }, [goals]);
+  useEffect(() => { scPoolRef.current   = selfCarePool; }, [selfCarePool]);
+  useEffect(() => { weightsRef.current  = weights;      }, [weights]);
+  useEffect(() => { bigGoalsRef.current = bigGoals;     }, [bigGoals]);
+
+  const saveProf = useCallback(async (overrides) => {
     if (!user) return;
-    console.log("[saveProf] saving to Firestore:", JSON.stringify(newProfile).slice(0,120));
-    await saveProfile(user.uid, newProfile);
-    console.log("[saveProf] done");
+    // Always build from refs (latest values) + overrides (the thing just changed)
+    const full = {
+      habits:      habitsRef.current,
+      goals:       goalsRef.current,
+      selfCarePool:scPoolRef.current,
+      weights:     weightsRef.current,
+      bigGoals:    bigGoalsRef.current,
+      ...overrides,
+    };
+    await saveProfile(user.uid, full);
   }, [user]);
 
-  // Helper: build full profile object from current state
-  const buildProfile = (overrides) => ({
-    habits, goals, selfCarePool, weights, bigGoals, ...overrides
-  });
+  // buildProfile not needed anymore — saveProf reads from refs directly
 
   // ── Helpers ────────────────────────────────────────────────
   const update = (k, v) => setLog(p => {
@@ -810,7 +843,7 @@ function MainApp({ profile: init, user, onSignOut }) {
         <div style={{fontSize:"9px",letterSpacing:"3px",textTransform:"uppercase",color:"#8b7763",marginBottom:"3px"}}>{new Date().toLocaleDateString("en-US",{weekday:"long",day:"numeric",month:"long"})}</div>
         <h1 style={{fontSize:"27px",fontWeight:"300",color:"#3d3530",margin:"0 0 1px",letterSpacing:"0.5px"}}>wellness</h1>
         <p style={{fontSize:"12px",color:"#a89880",fontStyle:"italic",margin:0}}>
-          {saveStatus==="saving"?"saving... 🌿":saveStatus==="saved"?"saved ✓":"your daily ritual"}
+          {"your daily ritual"}
         </p>
         <BlobCreature score={score}/>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",margin:"6px auto 0"}}>
@@ -983,13 +1016,13 @@ function MainApp({ profile: init, user, onSignOut }) {
         </div>
       </div>}
 
-      {activeTab==="goals"&&<GoalsTab goals={bigGoals} setGoals={g=>{setBigGoals(g);saveProf(buildProfile({bigGoals:g}));}} log={log} habits={habits}/>}
+      {activeTab==="goals"&&<GoalsTab goals={bigGoals} setGoals={g=>{setBigGoals(g);saveProf({bigGoals:g});}} log={log} habits={habits}/>}
       {activeTab==="history"&&<div style={S.section}><div style={S.sTitle}>📓 history</div><div style={{textAlign:"center",padding:"28px",color:"#8b7763",fontStyle:"italic"}}>your journey starts today 🌱</div></div>}
       {activeTab==="settings"&&<SettingsTab
-        habits={habits}      setHabits={h=>{setHabits(h);saveProf(buildProfile({habits:h}));}}
-        goals={goals}        setGoals={g=>{setGoals(g);saveProf(buildProfile({goals:g}));}}
-        selfCarePool={selfCarePool} setSelfCarePool={s=>{setSelfCarePool(s);saveProf(buildProfile({selfCarePool:s}));}}
-        weights={weights}    setWeights={w=>{setWeights(w);saveProf(buildProfile({weights:w}));}}
+        habits={habits}      setHabits={h=>{setHabits(h);saveProf({habits:h});}}
+        goals={goals}        setGoals={g=>{setGoals(g);saveProf({goals:g});}}
+        selfCarePool={selfCarePool} setSelfCarePool={s=>{setSelfCarePool(s);saveProf({selfCarePool:s});}}
+        weights={weights}    setWeights={w=>{setWeights(w);saveProf({weights:w});}}
         onSignOut={onSignOut}
       />}
 
