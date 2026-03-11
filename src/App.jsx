@@ -111,22 +111,6 @@ function getHabitValue(log, habitId) {
   }
 }
 
-// For goals display label — what "1 unit" means per habit
-function getHabitUnit(habitId) {
-  switch(habitId) {
-    case "water":      return "glasses";
-    case "steps":      return "steps";
-    case "workout":    return "sessions";
-    case "running":    return "km";
-    case "sleep":      return "hours";
-    case "learning":   return "min";
-    case "reading":    return "pages";
-    case "screenTime": return "min";
-    case "selfCare":   return "rituals";
-    case "sweets":     return "clean days";
-    default:           return "";
-  }
-}
 
 // ── BLOB ───────────────────────────────────────────────────────
 function BlobCreature({ score }) {
