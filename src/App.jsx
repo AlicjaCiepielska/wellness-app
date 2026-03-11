@@ -219,12 +219,12 @@ function WeightSlider({ label, value, onChange }) {
 }
 
 // ── ADD GOAL MODAL ─────────────────────────────────────────────
-function AddGoalModal({ habits, onAdd, onClose }) {
-  const [name, setName]     = useState("");
-  const [target, setTarget] = useState("");
-  const [unit, setUnit]     = useState("");
-  const [period, setPeriod] = useState("weekly");
-  const [linkedHabit, setLinkedHabit] = useState("");
+function AddGoalModal({ habits, onAdd, onClose, initial }) {
+  const [name, setName]     = useState(initial?.name || "");
+  const [target, setTarget] = useState(initial?.target?.toString() || "");
+  const [unit, setUnit]     = useState(initial?.unit || "");
+  const [period, setPeriod] = useState(initial?.period || "weekly");
+  const [linkedHabit, setLinkedHabit] = useState(initial?.linkedHabit || "");
 
   const linkableHabits = habits.filter(h => {
     const hDef = ALL_HABITS.find(x=>x.id===h);
@@ -250,7 +250,7 @@ function AddGoalModal({ habits, onAdd, onClose }) {
       onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div style={{width:"100%",background:"#faf8f3",borderRadius:"22px 22px 0 0",padding:"28px 22px 40px",boxShadow:"0 -8px 32px rgba(139,119,95,0.18)"}}>
         <div style={{width:"36px",height:"3px",background:"rgba(139,119,95,0.2)",borderRadius:"2px",margin:"0 auto 22px"}}/>
-        <h3 style={{fontSize:"18px",fontWeight:"300",color:"#3d3530",marginBottom:"18px"}}>new goal</h3>
+        <h3 style={{fontSize:"18px",fontWeight:"300",color:"#3d3530",marginBottom:"18px"}}>{initial?"edit goal":"new goal"}</h3>
 
         <div style={{marginBottom:"13px"}}>
           <label style={{fontSize:"11px",letterSpacing:"2px",textTransform:"uppercase",color:"#8b7763",display:"block",marginBottom:"6px"}}>goal name</label>
@@ -313,38 +313,39 @@ function AddGoalModal({ habits, onAdd, onClose }) {
 }
 
 // ── GOALS TAB ──────────────────────────────────────────────────
-function GoalsTab({ goals, setGoals, log }) {
-  const [showModal, setShowModal] = useState(false);
-  const [filter, setFilter]       = useState("all");
+function GoalsTab({ goals, setGoals, log, habits }) {
+  const [showModal,    setShowModal]   = useState(false);
+  const [editGoal,     setEditGoal]    = useState(null);
+  const [filter,       setFilter]      = useState("all");
+  const [manualEdits,  setManualEdits] = useState({});
 
-  const addGoal = (goal) => setGoals(p => [...p, goal]);
-  const removeGoal = (id) => setGoals(p => p.filter(g=>g.id!==id));
+  const addGoal    = (goal)    => setGoals(p => [...p, goal]);
+  const removeGoal = (id)      => setGoals(p => p.filter(g=>g.id!==id));
+  const updateGoal = (updated) => setGoals(p => p.map(g=>g.id===updated.id?updated:g));
 
-  // Auto-calculate progress for linked goals
   const getProgress = (goal) => {
-    if (!goal.linkedHabit) return goal.progress;
-    const todayVal = getHabitValue(log, goal.linkedHabit);
-    // For period goals, progress = accumulated. Here we show today's contribution as % of total target
-    // In real app this would sum from Firestore. For preview, show today's value
-    return todayVal;
+    if (!goal.linkedHabit) {
+      return manualEdits[goal.id] !== undefined ? manualEdits[goal.id] : (goal.progress || 0);
+    }
+    const todayVal    = getHabitValue(log, goal.linkedHabit);
+    const accumulated = goal.accumulated || 0;
+    return accumulated + todayVal;
   };
 
   const filtered = goals.filter(g => filter==="all" || g.period===filter);
 
   const S = {
     section:{margin:"0 16px 11px",background:"rgba(255,255,255,0.58)",borderRadius:"16px",padding:"15px 17px",boxShadow:"0 2px 12px rgba(139,119,95,0.07)"},
-    sTitle:{fontSize:"9px",letterSpacing:"3px",textTransform:"uppercase",color:"#8b7763",marginBottom:"13px"},
     card:{borderRadius:"13px",padding:"13px 14px",background:"rgba(255,255,255,0.5)",border:"1px solid rgba(139,119,95,0.09)",marginBottom:"8px"},
   };
 
   return (
     <>
-      {/* Filter + Add */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 16px 12px"}}>
         <div style={{display:"flex",gap:"6px"}}>
           {["all","weekly","monthly"].map(f=>(
             <button key={f} onClick={()=>setFilter(f)}
-              style={{padding:"6px 13px",borderRadius:"14px",border:"1.5px solid "+(filter===f?"#8ab890":"rgba(139,119,95,0.18)"),background:filter===f?"rgba(138,184,144,0.1)":"transparent",color:filter===f?"#4a6e4a":"#8b7763",fontSize:"11px",cursor:"pointer",fontFamily:"inherit",letterSpacing:"0.5px"}}>
+              style={{padding:"6px 13px",borderRadius:"14px",border:"1.5px solid "+(filter===f?"#8ab890":"rgba(139,119,95,0.18)"),background:filter===f?"rgba(138,184,144,0.1)":"transparent",color:filter===f?"#4a6e4a":"#8b7763",fontSize:"11px",cursor:"pointer",fontFamily:"inherit"}}>
               {f}
             </button>
           ))}
@@ -364,38 +365,55 @@ function GoalsTab({ goals, setGoals, log }) {
       )}
 
       {filtered.map(goal=>{
+        const hDef     = goal.linkedHabit ? ALL_HABITS.find(x=>x.id===goal.linkedHabit) : null;
         const progress = getProgress(goal);
-        const pct = Math.min(Math.round((progress/goal.target)*100),100);
-        const color = pct>=100?"linear-gradient(90deg,#8ab890,#5a7a5a)":pct>=60?"linear-gradient(90deg,#c4d4a8,#8ab890)":"linear-gradient(90deg,#d4c4a8,#c4a882)";
-        const hDef = goal.linkedHabit ? ALL_HABITS.find(x=>x.id===goal.linkedHabit) : null;
+        const target   = goal.target || 1;
+        const rawPct   = target > 0 ? (progress / target) * 100 : 0;
+        const pct      = Math.min(Math.round(rawPct), 100);
+        const color    = pct>=100?"linear-gradient(90deg,#8ab890,#5a7a5a)":pct>=60?"linear-gradient(90deg,#c4d4a8,#8ab890)":"linear-gradient(90deg,#d4c4a8,#c4a882)";
+        const manualVal = manualEdits[goal.id] ?? goal.progress ?? 0;
 
         return (
           <div key={goal.id} style={{margin:"0 16px 9px"}}>
             <div style={S.card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"2px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div style={{flex:1}}>
                   <div style={{fontSize:"13px",color:"#3d3530"}}>{goal.name}</div>
-                  <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"2px"}}>
-                    <span style={{fontSize:"11px",color:"#8b7763",fontStyle:"italic"}}>{progress} / {goal.target} {goal.unit}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"3px",flexWrap:"wrap"}}>
+                    <span style={{fontSize:"11px",color:"#8b7763",fontStyle:"italic"}}>{progress} / {target} {goal.unit||""}</span>
                     {hDef&&<span style={{fontSize:"10px",color:"#8ab890",background:"rgba(138,184,144,0.1)",padding:"1px 7px",borderRadius:"8px"}}>{hDef.emoji} auto</span>}
                     <span style={{fontSize:"10px",color:"#a89880",background:"rgba(139,119,95,0.07)",padding:"1px 7px",borderRadius:"8px"}}>{goal.period}</span>
                   </div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
                   <div style={{fontSize:"20px",fontWeight:"300",color:pct>=100?"#5a7a5a":"#8b7763"}}>{pct}%</div>
-                  <button onClick={()=>removeGoal(goal.id)} style={{background:"none",border:"none",color:"rgba(139,119,95,0.35)",fontSize:"16px",cursor:"pointer",padding:"0",lineHeight:1}}>×</button>
+                  <button onClick={()=>setEditGoal(goal)}
+                    style={{background:"rgba(139,119,95,0.07)",border:"none",borderRadius:"8px",padding:"4px 8px",fontSize:"11px",color:"#8b7763",cursor:"pointer",fontFamily:"inherit"}}>edit</button>
+                  <button onClick={()=>removeGoal(goal.id)}
+                    style={{background:"none",border:"none",color:"rgba(139,119,95,0.3)",fontSize:"18px",cursor:"pointer",padding:"0",lineHeight:1}}>×</button>
                 </div>
               </div>
-              <div style={{height:"6px",borderRadius:"3px",background:"rgba(139,119,95,0.08)",overflow:"hidden",marginTop:"8px"}}>
+              <div style={{height:"6px",borderRadius:"3px",background:"rgba(139,119,95,0.08)",overflow:"hidden",marginTop:"9px"}}>
                 <div style={{height:"100%",width:pct+"%",background:color,borderRadius:"3px",transition:"width 1s ease"}}/>
               </div>
-              {pct>=100&&<div style={{fontSize:"11px",color:"#5a7a5a",marginTop:"5px",fontStyle:"italic"}}>goal reached ✨</div>}
+              {!goal.linkedHabit&&(
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginTop:"9px"}}>
+                  <span style={{fontSize:"11px",color:"#8b7763",fontStyle:"italic"}}>update progress:</span>
+                  <button onClick={()=>setManualEdits(p=>({...p,[goal.id]:Math.max(0,manualVal-1)}))}
+                    style={{width:"24px",height:"24px",borderRadius:"50%",border:"1.5px solid rgba(139,119,95,0.2)",background:"transparent",cursor:"pointer",color:"#8b7763",fontSize:"14px",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                  <span style={{fontSize:"13px",fontWeight:"300",color:"#5a7a5a",minWidth:"24px",textAlign:"center"}}>{manualVal}</span>
+                  <button onClick={()=>setManualEdits(p=>({...p,[goal.id]:Math.min(target,manualVal+1)}))}
+                    style={{width:"24px",height:"24px",borderRadius:"50%",border:"1.5px solid rgba(139,119,95,0.2)",background:"transparent",cursor:"pointer",color:"#8b7763",fontSize:"14px",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                </div>
+              )}
+              {pct>=100&&<div style={{fontSize:"11px",color:"#5a7a5a",marginTop:"6px",fontStyle:"italic"}}>goal reached ✨</div>}
             </div>
           </div>
         );
       })}
 
-      {showModal&&<AddGoalModal habits={Object.keys(DEFAULT_WEIGHTS)} onAdd={addGoal} onClose={()=>setShowModal(false)}/>}
+      {showModal&&<AddGoalModal habits={habits} onAdd={addGoal} onClose={()=>setShowModal(false)}/>}
+      {editGoal&&<AddGoalModal habits={habits} initial={editGoal} onAdd={(updated)=>{updateGoal({...editGoal,...updated,id:editGoal.id});setEditGoal(null);}} onClose={()=>setEditGoal(null)}/>}
     </>
   );
 }
@@ -696,11 +714,29 @@ function MainApp({ profile: init, user, onSignOut }) {
     }, 1500);
   }, [user]);
 
-  // Save profile settings when they change
+  // Keep refs up to date so saveProfileData always has latest values
+  const habitsRef   = useRef(habits);
+  const goalsRef    = useRef(goals);
+  const scRef       = useRef(selfCarePool);
+  const weightsRef  = useRef(weights);
+  const bgRef       = useRef(bigGoals);
+  useEffect(() => { habitsRef.current  = habits;       }, [habits]);
+  useEffect(() => { goalsRef.current   = goals;        }, [goals]);
+  useEffect(() => { scRef.current      = selfCarePool; }, [selfCarePool]);
+  useEffect(() => { weightsRef.current = weights;      }, [weights]);
+  useEffect(() => { bgRef.current      = bigGoals;     }, [bigGoals]);
+
   const saveProfileData = useCallback(async (updates) => {
     if (!user) return;
-    await saveProfile(user.uid, { habits, goals, selfCarePool, weights, bigGoals, ...updates });
-  }, [user, habits, goals, selfCarePool, weights, bigGoals]);
+    const current = {
+      habits:      habitsRef.current,
+      goals:       goalsRef.current,
+      selfCarePool:scRef.current,
+      weights:     weightsRef.current,
+      bigGoals:    bgRef.current,
+    };
+    await saveProfile(user.uid, { ...current, ...updates });
+  }, [user]);
 
   const score = calcScore(log, habits, goals, weights);
   const update = (k,v) => setLog(p => { const n={...p,[k]:v}; scheduleLogSave(n); return n; });
@@ -926,7 +962,7 @@ function MainApp({ profile: init, user, onSignOut }) {
         </div>
       </div>}
 
-      {activeTab==="goals"&&<GoalsTab goals={bigGoals} setGoals={g=>{setBigGoals(g);saveProfileData({bigGoals:g});}} log={log}/>}
+      {activeTab==="goals"&&<GoalsTab goals={bigGoals} setGoals={g=>{setBigGoals(g);saveProfileData({bigGoals:g});}} log={log} habits={habits}/>}
       {activeTab==="history"&&<div style={S.section}><div style={S.sTitle}>📓 history</div><div style={{textAlign:"center",padding:"28px",color:"#8b7763",fontStyle:"italic"}}>your journey starts today 🌱</div></div>}
       {activeTab==="settings"&&<SettingsTab habits={habits} setHabits={h=>{setHabits(h);saveProfileData({habits:h});}} goals={goals} setGoals={g=>{setGoals(g);saveProfileData({goals:g});}} selfCarePool={selfCarePool} setSelfCarePool={s=>{setSelfCarePool(s);saveProfileData({selfCarePool:s});}} weights={weights} setWeights={w=>{setWeights(w);saveProfileData({weights:w});}} onSignOut={onSignOut}/>}
 
