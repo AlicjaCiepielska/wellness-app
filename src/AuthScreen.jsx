@@ -202,12 +202,7 @@ export default function AuthScreen() {
         {mode !== "reset" && (
           <>
             <div style={S.divider}>or continue with</div>
-            {inAppBrowser && (
-              <div style={{ fontSize:11, color:"#8b6b3d", background:"rgba(196,168,130,.12)", border:"1px solid rgba(196,168,130,.25)", borderRadius:10, padding:"9px 12px", marginBottom:10, textAlign:"center", lineHeight:1.5, fontStyle:"italic" }}>
-                📱 you're in an in-app browser — for the best experience, open this app in Chrome or Safari.<br/>
-                <span style={{color:"#5a7a5a"}}>Google/Apple sign-in will redirect and come back ✨</span>
-              </div>
-            )}
+
             <button style={S.outlineBtn("#4285F4")} onClick={handleGoogle} disabled={loading}>
               <svg width="16" height="16" viewBox="0 0 48 48">
                 <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.7 33.4 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 19.7-8 19.7-20 0-1.3-.1-2.7-.1-4z"/>
@@ -235,6 +230,12 @@ export default function AuthScreen() {
           {mode === "register" && <button style={S.link} onClick={() => { clearMessages(); setMode("login"); }}>already have an account?</button>}
           {mode === "reset"    && <button style={S.link} onClick={() => { clearMessages(); setMode("login"); }}>back to sign in</button>}
         </div>
+      {inAppBrowser && (
+        <div style={{ marginTop:16, textAlign:"center", fontSize:11, color:"#a89880", fontStyle:"italic", lineHeight:1.6 }}>
+          📱 for best experience, open in Chrome or Safari<br/>
+          <span style={{ fontSize:10, color:"#b8a890" }}>google/apple sign-in will redirect and return ✨</span>
+        </div>
+      )}
       </div>
     </div>
   );

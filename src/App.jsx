@@ -1167,7 +1167,7 @@ function MainApp({ profile: init, user, onSignOut }) {
       {activeTab==="today" && <>
         {habits.includes("water")&&<div style={S.sec}>
           <div style={S.ttl}>💧 water</div>
-          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{Array.from({length:Math.min(G.water||8,14)}).map((_,i)=><div key={i} style={S.glass(i<log.water)} onClick={()=>update("water",i<log.water?log.water-1:log.water+1)}/>)}</div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{Array.from({length:Math.min(G.water||8,14)}).map((_,i)=><div key={i} style={S.glass(i<log.water)} onClick={()=>update("water", log.water===i+1 ? i : i+1)}/>)}</div>
           <div style={S.bar}><div style={S.fill((log.water/(G.water||8))*100,"linear-gradient(90deg,#a8d4e6,#7bbcd4)")}/></div>
           <div style={S.hint}>{log.water}/{G.water||8} glasses {log.water>=(G.water||8)?"· goal reached ✓":`· ${(G.water||8)-log.water} more`}</div>
         </div>}
