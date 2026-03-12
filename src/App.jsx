@@ -398,7 +398,6 @@ function GoalsTab({ goals, setGoals, log, habits }) {
         const target    = Math.max(goal.target || 1, 0.001);
         const pct       = Math.min(Math.round((progress / target) * 100), 100);
         const bar       = pct>=100?"linear-gradient(90deg,#8ab890,#5a7a5a)":pct>=60?"linear-gradient(90deg,#c4d4a8,#8ab890)":"linear-gradient(90deg,#d4c4a8,#c4a882)";
-        const hDef      = goal.linkedHabit ? ALL_HABITS.find(x=>x.id===goal.linkedHabit) : null;
         const isStreak  = goal.goalType === "streak";
         const isLinked  = !!goal.linkedHabit;
 
