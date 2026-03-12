@@ -98,8 +98,9 @@ function calcScore(log, habits, goals, weights) {
   if (habits.includes("food") && log.foodQuality !== null)
     add("food", 1 - (log.foodQuality - 1) / 4);
 
-  // screenTime: scored by social media — ≤60min=1.0, ≥180min=0
-  if (habits.includes("screenTime") && (log.screenTime > 0 || log.socialMedia > 0)) {
+  // screenTime: only score if user logged total screen time
+  // social media ≤60min = 1.0, ≥180min = 0
+  if (habits.includes("screenTime") && log.screenTime > 0) {
     const s = log.socialMedia || 0;
     add("screenTime", s <= 60 ? 1 : Math.max(0, 1 - (s - 60) / 120));
   }

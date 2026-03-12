@@ -15,7 +15,8 @@ export async function loadTodayLog(uid) {
 export async function saveTodayLog(uid, data) {
   try {
     const clean = JSON.parse(JSON.stringify(data));
-    await setDoc(doc(db, "users", uid, "logs", todayId()), { ...clean, updatedAt: new Date().toISOString() }, { merge: true });
+    // merge:false — always write full snapshot so stale fields from old versions can't linger
+    await setDoc(doc(db, "users", uid, "logs", todayId()), { ...clean, updatedAt: new Date().toISOString() });
   } catch(e) { console.error("[db] saveTodayLog:", e.code); }
 }
 
