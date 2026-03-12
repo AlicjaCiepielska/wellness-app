@@ -684,11 +684,12 @@ function Onboarding({ onDone }) {
     sB:   { width:30, height:30, borderRadius:"50%", border:"1.5px solid rgba(139,119,95,.2)", background:"rgba(255,255,255,.6)", cursor:"pointer", fontSize:18, color:"#8b7763", display:"flex", alignItems:"center", justifyContent:"center" },
   };
 
-  const finish = () => onDone({ habits, goals, selfCarePool:scPool, weights:{...DEFAULT_WEIGHTS}, bigGoals:[], notif:defaultNotifSettings });
+  const finish = () => onDone({ habits, goals, selfCarePool:scPool, weights:{...DEFAULT_WEIGHTS}, bigGoals:[], notif:defaultNotifSettings, trophies:[] });
 
   if (step===0) return (
     <div style={W.wrap}>
       <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet"/>
+      <style>{`@keyframes dotPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(138,184,144,.6)}60%{transform:scale(1.2);box-shadow:0 0 0 5px rgba(138,184,144,0)}}`}</style>
       <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", textAlign:"center" }}>
         <Blob score={65}/>
         <h1 style={{ fontSize:38, fontWeight:300, color:"#3d3530", margin:"16px 0 7px", letterSpacing:1 }}>wellness</h1>
@@ -701,6 +702,7 @@ function Onboarding({ onDone }) {
   if (step===1) return (
     <div style={W.wrap}>
       <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet"/>
+      <style>{`@keyframes dotPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(138,184,144,.6)}60%{transform:scale(1.2);box-shadow:0 0 0 5px rgba(138,184,144,0)}}`}</style>
       <div style={W.prog}><div style={W.bar(33)}/></div>
       <h2 style={{ fontSize:22, fontWeight:300, marginBottom:5 }}>what do you want to track?</h2>
       <p style={{ fontSize:11, color:"#8b7763", fontStyle:"italic", marginBottom:18 }}>changeable anytime in settings</p>
@@ -722,6 +724,7 @@ function Onboarding({ onDone }) {
   if (step===2) return (
     <div style={W.wrap}>
       <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet"/>
+      <style>{`@keyframes dotPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(138,184,144,.6)}60%{transform:scale(1.2);box-shadow:0 0 0 5px rgba(138,184,144,0)}}`}</style>
       <div style={W.prog}><div style={W.bar(habits.includes("selfCare")?66:100)}/></div>
       <h2 style={{ fontSize:22, fontWeight:300, marginBottom:5 }}>your daily goals</h2>
       <p style={{ fontSize:11, color:"#8b7763", fontStyle:"italic", marginBottom:14 }}>adjustable anytime in settings</p>
@@ -746,6 +749,7 @@ function Onboarding({ onDone }) {
   return (
     <div style={W.wrap}>
       <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet"/>
+      <style>{`@keyframes dotPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(138,184,144,.6)}60%{transform:scale(1.2);box-shadow:0 0 0 5px rgba(138,184,144,0)}}`}</style>
       <div style={W.prog}><div style={W.bar(100)}/></div>
       <h2 style={{ fontSize:22, fontWeight:300, marginBottom:5 }}>your self care menu</h2>
       <p style={{ fontSize:11, color:"#8b7763", fontStyle:"italic", marginBottom:18 }}>pick what counts as self care for you</p>
@@ -753,6 +757,201 @@ function Onboarding({ onDone }) {
         {ALL_SELFCARE.map(it => <div key={it} style={W.pill(scPool.includes(it))} onClick={()=>setScPool(p=>p.includes(it)?p.filter(s=>s!==it):[...p,it])}>{it}</div>)}
       </div>
       <button style={W.btn} onClick={finish}>finish ✨</button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// TROPHY SVG
+// ─────────────────────────────────────────────────────────────
+function TrophySVG({ gold = true, size = 44 }) {
+  const g = gold
+    ? { cup:"#f0d060", cupShine:"#f8ec98", cupShadow:"#c09020", base:"#e0b840", stem:"#d4a030", shine:"rgba(255,255,240,.55)" }
+    : { cup:"#d8d8e8", cupShine:"#eeeef8", cupShadow:"#9898b8", base:"#c8c8dc", stem:"#b8b8cc", shine:"rgba(255,255,255,.5)" };
+  const uid = gold?"gtc":"gts";
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48">
+      <defs>
+        <radialGradient id={uid} cx="38%" cy="28%" r="65%">
+          <stop offset="0%" stopColor={g.cupShine}/>
+          <stop offset="100%" stopColor={g.cup}/>
+        </radialGradient>
+        <filter id={uid+"f"}>
+          <feDropShadow dx="0" dy="2" stdDeviation="1.5" floodColor={g.cupShadow} floodOpacity="0.4"/>
+        </filter>
+      </defs>
+      <path d="M14 6 L34 6 L32 24 Q30 30 24 32 Q18 30 16 24 Z" fill={`url(#${uid})`} filter={`url(#${uid}f)`}/>
+      <ellipse cx="20" cy="11" rx="3.5" ry="5" fill={g.shine} transform="rotate(-15 20 11)"/>
+      <path d="M14 9 Q7 9 7 16 Q7 22 14 22" fill="none" stroke={g.cup} strokeWidth="3.5" strokeLinecap="round"/>
+      <path d="M34 9 Q41 9 41 16 Q41 22 34 22" fill="none" stroke={g.cup} strokeWidth="3.5" strokeLinecap="round"/>
+      <path d="M14 9 Q7 9 7 16 Q7 22 14 22" fill="none" stroke={g.cupShine} strokeWidth="1.2" strokeLinecap="round" opacity=".6"/>
+      <path d="M34 9 Q41 9 41 16 Q41 22 34 22" fill="none" stroke={g.cupShine} strokeWidth="1.2" strokeLinecap="round" opacity=".6"/>
+      <rect x="21" y="32" width="6" height="7" rx="1" fill={g.stem}/>
+      <rect x="15" y="38" width="18" height="4" rx="2" fill={g.base}/>
+      <rect x="15" y="38" width="18" height="1.5" rx="1" fill={g.cupShine} opacity=".5"/>
+      <text x="24" y="22" fontSize="9" textAnchor="middle" fill={gold?"#8a6010":"#6868a0"} opacity=".8">★</text>
+    </svg>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// GOLDEN BLOB (only used in celebration popup)
+// ─────────────────────────────────────────────────────────────
+function GoldenBlob({ size = 80 }) {
+  return (
+    <div style={{ position:"relative", width:size+48, height:size+48, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <style>{`
+        @keyframes goldenAura1{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.12);opacity:.85}}
+        @keyframes goldenAura2{0%,100%{transform:scale(1);opacity:.3}50%{transform:scale(1.2);opacity:.6}}
+        @keyframes goldenFloat{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-11px) rotate(1deg)}}
+      `}</style>
+      <div style={{ position:"absolute", width:"100%", height:"100%", borderRadius:"50%", background:"radial-gradient(circle,rgba(255,210,80,.38) 0%,transparent 70%)", animation:"goldenAura1 2.8s ease-in-out infinite" }}/>
+      <div style={{ position:"absolute", width:"115%", height:"115%", top:"-7.5%", left:"-7.5%", borderRadius:"50%", background:"radial-gradient(circle,rgba(255,185,40,.18) 0%,transparent 65%)", animation:"goldenAura2 3.4s ease-in-out infinite" }}/>
+      <div style={{ animation:"goldenFloat 2.2s ease-in-out infinite", position:"relative", zIndex:2 }}>
+        <svg width={size} height={size} viewBox="0 0 84 84">
+          <defs>
+            <radialGradient id="blobGoldPop" cx="38%" cy="28%" r="68%">
+              <stop offset="0%" stopColor="#fff8e8" stopOpacity="0.9"/>
+              <stop offset="45%" stopColor="#f0d880"/>
+              <stop offset="100%" stopColor="#c8a040"/>
+            </radialGradient>
+          </defs>
+          <path d="M42 12 C58 10,72 22,73 41 C74 60,61 73,43 75 C25 77,10 64,10 46 C10 28,24 14,42 12Z" fill="url(#blobGoldPop)" stroke="#b8880a" strokeWidth="1.2"/>
+          <text x="29" y="44" fontSize="13" textAnchor="middle" fill="#8a6010" opacity=".9">✦</text>
+          <text x="55" y="44" fontSize="13" textAnchor="middle" fill="#8a6010" opacity=".9">✦</text>
+          <ellipse cx="18" cy="52" rx="7" ry="3.8" fill="rgba(220,140,130,.25)"/>
+          <ellipse cx="66" cy="52" rx="7" ry="3.8" fill="rgba(220,140,130,.25)"/>
+          <path d="M28 59 Q42 70 56 59" stroke="#8a6010" strokeWidth="2.4" fill="none" strokeLinecap="round"/>
+          <ellipse cx="33" cy="26" rx="6" ry="3.5" fill="rgba(255,255,255,.35)" transform="rotate(-20 33 26)"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONFETTI
+// ─────────────────────────────────────────────────────────────
+function Confetti() {
+  const pieces = Array.from({length:36}, (_,i) => ({
+    id:i, x:5+Math.random()*90, delay:Math.random()*.7, dur:1.6+Math.random()*1.5,
+    w:4+Math.random()*9, h:4+Math.random()*5,
+    color:["#f0d460","#8ab890","#c4a882","#b8c4e8","#d4c4e8","#c8e0c0","#f0c8a0","#e8a0b0"][i%8],
+    shape:["circle","square","rect"][i%3],
+  }));
+  return (
+    <div style={{ position:"fixed", inset:0, overflow:"hidden", pointerEvents:"none", zIndex:302 }}>
+      <style>{`@keyframes confFall{0%{opacity:1;transform:translateY(-15px) rotate(0deg)}100%{opacity:0;transform:translateY(108vh) rotate(620deg) scale(.4)}}`}</style>
+      {pieces.map(p => (
+        <div key={p.id} style={{ position:"absolute", top:0, left:p.x+"%", width:p.shape==="rect"?p.w*.55:p.w, height:p.h, background:p.color, borderRadius:p.shape==="circle"?"50%":"3px", animation:`confFall ${p.dur}s ${p.delay}s cubic-bezier(.2,.6,.4,1) forwards`, opacity:0 }}/>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// CELEBRATION POPUP
+// ─────────────────────────────────────────────────────────────
+function CelebrationPopup({ goal, onClose }) {
+  const [ph, setPh] = useState("in");
+  useEffect(() => {
+    const t1 = setTimeout(() => setPh("show"), 40);
+    const t2 = setTimeout(() => setPh("out"), 4600);
+    const t3 = setTimeout(onClose, 5100);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [onClose]);
+  const show = ph==="show", out = ph==="out";
+  return (
+    <>
+      <Confetti/>
+      <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:300, background:show?"rgba(38,30,22,.58)":"rgba(38,30,22,0)", backdropFilter:show?"blur(8px)":"none", transition:"all .5s ease", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ textAlign:"center", maxWidth:292, width:"90%", transform:out?"scale(.88) translateY(14px)":show?"scale(1) translateY(0)":"scale(.5) translateY(36px)", opacity:out?0:show?1:0, transition:out?"all .4s ease-in":"all .6s cubic-bezier(.34,1.5,.64,1)" }}>
+          <style>{`
+            @keyframes cardPop{0%{transform:scale(.85);opacity:0}60%{transform:scale(1.03)}100%{transform:scale(1);opacity:1}}
+            @keyframes trophyBounce{0%{transform:translateY(20px) rotate(-8deg);opacity:0}55%{transform:translateY(-6px) rotate(3deg);opacity:1}80%{transform:translateY(2px) rotate(-1deg)}100%{transform:translateY(0) rotate(0deg);opacity:1}}
+          `}</style>
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:2 }}>
+            <GoldenBlob size={80}/>
+          </div>
+          <div style={{ background:"rgba(252,250,245,.97)", borderRadius:26, padding:"22px 26px 28px", boxShadow:"0 28px 70px rgba(80,60,20,.18), 0 6px 22px rgba(139,119,95,.1), inset 0 1px 0 rgba(255,255,255,.9)", border:"1.5px solid rgba(196,160,64,.28)", animation:show?"cardPop .55s .1s cubic-bezier(.34,1.4,.64,1) both":"none" }}>
+            <div style={{ display:"flex", justifyContent:"center", marginBottom:12, animation:show?"trophyBounce .7s .3s cubic-bezier(.34,1.5,.64,1) both":"none" }}>
+              <TrophySVG gold={goal.period==="monthly"} size={52}/>
+            </div>
+            <div style={{ fontSize:10, letterSpacing:"3.5px", textTransform:"uppercase", color:goal.period==="monthly"?"#c4a040":"#8ab890", marginBottom:9 }}>
+              {goal.period} goal complete ✦
+            </div>
+            <div style={{ fontSize:21, fontWeight:300, color:"#3d3530", lineHeight:1.3, marginBottom:10, fontFamily:"'Cormorant Garamond',Georgia,serif" }}>
+              {goal.name}
+            </div>
+            <div style={{ display:"flex", gap:7, justifyContent:"center", marginBottom:16 }}>
+              <span style={{ fontSize:11, color:"#8b6b3d", background:"rgba(196,168,130,.12)", padding:"3px 11px", borderRadius:10 }}>{goal.target} {goal.unit}</span>
+            </div>
+            <div style={{ fontSize:13, color:"#5a7a5a", fontStyle:"italic", lineHeight:1.7 }}>
+              you did it ✨<br/><span style={{ fontSize:11, color:"#8b7763" }}>trophy saved to your collection</span>
+            </div>
+          </div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,.45)", marginTop:11, fontStyle:"italic" }}>tap to dismiss</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// TROPHY CARD
+// ─────────────────────────────────────────────────────────────
+function TrophyCard({ trophy, index, isNew }) {
+  const [vis, setVis] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setVis(true), index*80+40); return ()=>clearTimeout(t); }, [index]);
+  const gold = trophy.period === "monthly";
+  return (
+    <div style={{ transform:vis?"translateY(0)":"translateY(20px)", opacity:vis?1:0, transition:"all .45s cubic-bezier(.34,1.2,.64,1)", background:gold?"linear-gradient(135deg,rgba(255,248,220,.7),rgba(255,255,255,.55))":"linear-gradient(135deg,rgba(248,248,255,.85),rgba(255,255,255,.7))", borderRadius:16, padding:"14px 16px", border:isNew?`1.5px solid ${gold?"rgba(196,160,64,.4)":"rgba(160,160,210,.35)"}`:`1px solid ${gold?"rgba(196,160,64,.18)":"rgba(160,160,210,.18)"}`, boxShadow:gold?"0 4px 18px rgba(196,160,64,.1), 0 2px 8px rgba(139,119,95,.05)":"0 4px 16px rgba(160,160,210,.1), 0 2px 8px rgba(139,119,95,.04)", display:"flex", alignItems:"center", gap:15, position:"relative" }}>
+      {isNew && <div style={{ position:"absolute", top:9, right:11, fontSize:9, letterSpacing:"1.5px", textTransform:"uppercase", color:gold?"#c4a040":"#8ab890", background:gold?"rgba(196,160,64,.1)":"rgba(138,184,144,.1)", padding:"2px 8px", borderRadius:8 }}>new ✦</div>}
+      <div style={{ flexShrink:0, filter:gold?"drop-shadow(0 2px 6px rgba(196,160,64,.4))":"drop-shadow(0 2px 6px rgba(120,120,160,.2))" }}>
+        <TrophySVG gold={gold} size={48}/>
+      </div>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:13, color:"#3d3530", marginBottom:3, lineHeight:1.3 }}>{trophy.name}</div>
+        <div style={{ fontSize:10, color:"#8b7763", fontStyle:"italic" }}>{trophy.target} {trophy.unit}</div>
+        <div style={{ fontSize:10, color:"#a89880", marginTop:3 }}>{new Date(trophy.completedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+      </div>
+      <div style={{ fontSize:16, opacity:.55 }}>{gold?"✨":"🌿"}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// TROPHIES TAB
+// ─────────────────────────────────────────────────────────────
+function TrophiesTab({ trophies, newIds }) {
+  const monthly = trophies.filter(t=>t.period==="monthly");
+  const weekly  = trophies.filter(t=>t.period==="weekly");
+  if (!trophies.length) return (
+    <div style={{ textAlign:"center", padding:"52px 24px" }}>
+      <div style={{ opacity:.25, marginBottom:14, display:"flex", justifyContent:"center" }}><TrophySVG gold size={64}/></div>
+      <div style={{ fontSize:16, color:"#8b7763", fontStyle:"italic", fontFamily:"'Cormorant Garamond',Georgia,serif" }}>no trophies yet</div>
+      <div style={{ fontSize:12, color:"#a89880", marginTop:7, lineHeight:1.8 }}>complete a goal and your first<br/>trophy will appear here ✨</div>
+    </div>
+  );
+  const Section = ({label, items, startIdx, color}) => !items.length ? null : (
+    <div style={{ marginBottom:20 }}>
+      <div style={{ fontSize:9, letterSpacing:"3px", textTransform:"uppercase", color, marginBottom:10, display:"flex", alignItems:"center", gap:8 }}>
+        <TrophySVG gold={color==="#c4a040"} size={16}/>{label}
+      </div>
+      {items.map((t,i) => <div key={t.id} style={{marginBottom:9}}><TrophyCard trophy={t} index={startIdx+i} isNew={newIds.includes(t.id)}/></div>)}
+    </div>
+  );
+  return (
+    <div style={{ padding:"4px 16px 0" }}>
+      <div style={{ textAlign:"center", marginBottom:18 }}>
+        <div style={{ fontSize:11, color:"#8b7763", fontStyle:"italic" }}>{trophies.length} trophy{trophies.length!==1?"s":""} earned ✦</div>
+        <div style={{ display:"flex", justifyContent:"center", gap:8, marginTop:8 }}>
+          {monthly.length>0 && <span style={{ fontSize:10, color:"#c4a040", background:"rgba(196,160,64,.1)", padding:"2px 10px", borderRadius:10 }}>🏆 {monthly.length} monthly</span>}
+          {weekly.length>0  && <span style={{ fontSize:10, color:"#7878a8", background:"rgba(140,140,200,.1)", padding:"2px 10px", borderRadius:10 }}>🏆 {weekly.length} weekly</span>}
+        </div>
+      </div>
+      <Section label="monthly trophies" items={monthly} startIdx={0}           color="#c4a040"/>
+      <Section label="weekly trophies"  items={weekly}  startIdx={monthly.length} color="#7878a8"/>
     </div>
   );
 }
@@ -771,6 +970,9 @@ function MainApp({ profile: init, user, onSignOut }) {
   const [log,      setLog]       = useState({...EMPTY_LOG});
   const [activeTab,setActiveTab] = useState("today");
   const [menuOpen, setMenuOpen]  = useState(false);
+  const [trophies, setTrophies]  = useState(init.trophies || []);
+  const [newTrophyIds, setNewTrophyIds] = useState([]);
+  const [celebGoal, setCelebGoal] = useState(null);
 
   // ── refs for latest values (no stale closure in callbacks) ──
   const rH = useRef(habits);   useEffect(()=>{rH.current=habits;},   [habits]);
@@ -779,6 +981,7 @@ function MainApp({ profile: init, user, onSignOut }) {
   const rW = useRef(weights);  useEffect(()=>{rW.current=weights;},  [weights]);
   const rB = useRef(bigGoals); useEffect(()=>{rB.current=bigGoals;}, [bigGoals]);
   const rN = useRef(notif);    useEffect(()=>{rN.current=notif;},    [notif]);
+  const rT = useRef(trophies); useEffect(()=>{rT.current=trophies;}, [trophies]);
 
   // ── save profile — always full snapshot from refs + override ──
   const logTimer = useRef(null);
@@ -792,6 +995,7 @@ function MainApp({ profile: init, user, onSignOut }) {
         weights:     rW.current,
         bigGoals:    rB.current,
         notif:       rN.current,
+        trophies:    rT.current,
         ...override,
       });
     } catch(e) { console.error("saveProf", e); }
@@ -804,6 +1008,34 @@ function MainApp({ profile: init, user, onSignOut }) {
   const setWeights = v => { setWeightsS(v);  saveProf({weights:v});      };
   const setBigGoals= v => { setBigGoalsS(v); saveProf({bigGoals:v});     };
   const setNotif   = v => { setNotifS(v);    saveProf({notif:v});        };
+
+  // ── auto-detect completed goals → trigger celebration ──
+  useEffect(() => {
+    bigGoals.forEach(g => {
+      if (g.celebrated) return;
+      const progress = g.linkedHabit
+        ? (g.goalType === "streak"
+            ? (g.streakDays || 0) + (meetsThreshold(log, g.linkedHabit, g.threshold) ? 1 : 0)
+            : (g.accumulatedProgress || 0) + habitValue(log, g.linkedHabit))
+        : (g.accumulatedProgress || 0);
+      if (progress >= (g.target || 1)) {
+        const t = setTimeout(() => {
+          // Mark goal as celebrated
+          setBigGoalsS(prev => prev.map(x => x.id===g.id ? {...x, celebrated:true} : x));
+          // Add trophy
+          const newT = { id:Date.now()+g.id, name:g.name, target:g.target, unit:g.unit, period:g.period, completedAt:new Date().toISOString() };
+          setTrophies(prev => {
+            const updated = [newT, ...prev];
+            saveProf({ trophies: updated });
+            return updated;
+          });
+          setNewTrophyIds(prev => [...prev, newT.id]);
+          setCelebGoal(g);
+        }, 500);
+        return () => clearTimeout(t);
+      }
+    });
+  }, [bigGoals, log]); // eslint-disable-line
 
   // ── load today's log ──
   useEffect(() => {
@@ -858,16 +1090,23 @@ function MainApp({ profile: init, user, onSignOut }) {
   return (
     <div style={S.app}>
       <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet"/>
+      <style>{`@keyframes dotPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(138,184,144,.6)}60%{transform:scale(1.2);box-shadow:0 0 0 5px rgba(138,184,144,0)}}`}</style>
       {menuOpen && <div onClick={()=>setMenuOpen(false)} style={{ position:"fixed", inset:0, zIndex:50 }}/>}
 
       {/* HEADER */}
       <div style={{ padding:"18px 18px 10px", textAlign:"center", borderBottom:"1px solid rgba(139,119,95,.1)", position:"relative" }}>
         <div style={{ position:"absolute", top:15, right:15, zIndex:60 }}>
-          <button onClick={()=>setMenuOpen(p=>!p)} style={{ background:"rgba(255,255,255,.72)", border:"1.5px solid rgba(139,119,95,.17)", borderRadius:11, padding:"7px 11px", cursor:"pointer", fontSize:14, lineHeight:1, backdropFilter:"blur(8px)" }}>☰</button>
+          <button onClick={()=>setMenuOpen(p=>!p)} style={{ background:"rgba(255,255,255,.72)", border:"1.5px solid rgba(139,119,95,.17)", borderRadius:11, padding:"7px 11px", cursor:"pointer", fontSize:14, lineHeight:1, backdropFilter:"blur(8px)", position:"relative" }}>
+            ☰
+            {newTrophyIds.length>0 && <div style={{ position:"absolute", top:-5, right:-5, width:11, height:11, borderRadius:"50%", background:"#8ab890", border:"2.5px solid #faf8f3", animation:"dotPulse 1.8s ease-in-out infinite" }}/>}
+          </button>
           {menuOpen && (
             <div style={{ position:"absolute", right:0, top:40, background:"rgba(252,250,246,.98)", borderRadius:14, boxShadow:"0 8px 28px rgba(139,119,95,.14)", border:"1.5px solid rgba(139,119,95,.1)", padding:7, minWidth:155, zIndex:100 }}>
-              {[["history","📓  history"],["settings","⚙️  settings"]].map(([id,lbl])=>(
-                <button key={id} onClick={()=>{setActiveTab(id);setMenuOpen(false);}} style={{ display:"block", width:"100%", padding:"10px 13px", borderRadius:10, border:"none", background:activeTab===id?"rgba(138,184,144,.1)":"transparent", color:"#5c4f42", fontSize:13, cursor:"pointer", fontFamily:"inherit", textAlign:"left" }}>{lbl}</button>
+              {[["history","📓  history"],["trophies","🏆  trophies"],["settings","⚙️  settings"]].map(([id,lbl])=>(
+                <button key={id} onClick={()=>{ if(id==="trophies"){ setActiveTab("trophies"); setNewTrophyIds([]); } else setActiveTab(id); setMenuOpen(false); }} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", padding:"10px 13px", borderRadius:10, border:"none", background:activeTab===id?"rgba(138,184,144,.1)":"transparent", color:"#5c4f42", fontSize:13, cursor:"pointer", fontFamily:"inherit", textAlign:"left" }}>
+                  <span>{lbl}</span>
+                  {id==="trophies"&&newTrophyIds.length>0&&<span style={{ width:19, height:19, borderRadius:"50%", background:"#8ab890", color:"white", fontSize:10, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"sans-serif" }}>{newTrophyIds.length}</span>}
+                </button>
               ))}
               <div style={{ margin:"5px 0", borderTop:"1px solid rgba(139,119,95,.09)" }}/>
               <button onClick={onSignOut} style={{ display:"block", width:"100%", padding:"8px 13px", borderRadius:10, border:"none", background:"transparent", color:"#c47a7a", fontSize:12, cursor:"pointer", fontFamily:"inherit", textAlign:"left", fontStyle:"italic" }}>sign out</button>
@@ -1015,6 +1254,8 @@ function MainApp({ profile: init, user, onSignOut }) {
 
       {activeTab==="goals"   && <GoalsTab goals={bigGoals} setGoals={setBigGoals} log={log} habits={habits}/>}
       {activeTab==="history" && <div style={S.sec}><div style={S.ttl}>📓 history</div><div style={{textAlign:"center",padding:28,color:"#8b7763",fontStyle:"italic"}}>your journey starts today 🌱</div></div>}
+      {activeTab==="trophies" && <TrophiesTab trophies={trophies} newIds={newTrophyIds}/>}
+      {celebGoal && <CelebrationPopup goal={celebGoal} onClose={()=>setCelebGoal(null)}/>}
       {activeTab==="settings"&& <SettingsTab habits={habits} setHabits={setHabits} goals={goals} setGoals={setGoals} selfCarePool={scPool} setSelfCarePool={setScPool} weights={weights} setWeights={setWeights} notif={notif} setNotif={setNotif} onSignOut={onSignOut}/>}
 
       {/* BOTTOM NAV */}
