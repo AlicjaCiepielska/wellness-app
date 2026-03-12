@@ -1006,7 +1006,18 @@ function MainApp({ profile: init, user, onSignOut }) {
   const setGoals   = v => { setGoalsS(v);    saveProf({goals:v});        };
   const setScPool  = v => { setScPoolS(v);   saveProf({selfCarePool:v}); };
   const setWeights = v => { setWeightsS(v);  saveProf({weights:v});      };
-  const setBigGoals= v => { setBigGoalsS(v); saveProf({bigGoals:v});     };
+  const setBigGoals= v => { setBigGoalsS(v); };
+  // save bigGoals + trophies whenever they change
+  const bigGoalsRef = useRef(false);
+  useEffect(() => {
+    if (!bigGoalsRef.current) { bigGoalsRef.current=true; return; }
+    saveProf({ bigGoals });
+  }, [bigGoals]); // eslint-disable-line
+  const trophiesRef = useRef(false);
+  useEffect(() => {
+    if (!trophiesRef.current) { trophiesRef.current=true; return; }
+    saveProf({ trophies });
+  }, [trophies]); // eslint-disable-line
   const setNotif   = v => { setNotifS(v);    saveProf({notif:v});        };
 
   // ── auto-detect completed goals → trigger celebration ──
@@ -1021,14 +1032,10 @@ function MainApp({ profile: init, user, onSignOut }) {
       if (progress >= (g.target || 1)) {
         const t = setTimeout(() => {
           // Mark goal as celebrated
-          setBigGoalsS(prev => prev.map(x => x.id===g.id ? {...x, celebrated:true} : x));
+          setBigGoals(prev => prev.map(x => x.id===g.id ? {...x, celebrated:true} : x));
           // Add trophy
           const newT = { id:Date.now()+g.id, name:g.name, target:g.target, unit:g.unit, period:g.period, completedAt:new Date().toISOString() };
-          setTrophies(prev => {
-            const updated = [newT, ...prev];
-            saveProf({ trophies: updated });
-            return updated;
-          });
+          setTrophies(prev => [newT, ...prev]);
           setNewTrophyIds(prev => [...prev, newT.id]);
           setCelebGoal(g);
         }, 500);
