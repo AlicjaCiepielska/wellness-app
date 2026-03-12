@@ -124,12 +124,6 @@ function fmtTime(m) {
 // Which habits store values in minutes
 const TIME_HABITS = ["learning", "screenTime"];
 
-// Format a goal value — minutes for time habits, raw for others
-function fmtGoalVal(val, habitId) {
-  if (TIME_HABITS.includes(habitId)) return fmtTime(val);
-  return val;
-}
-
 // Per-habit goal config
 // direction: "min" = need at least N (water, steps, sleep...)
 //            "max" = need at most N (screenTime, sweets)
