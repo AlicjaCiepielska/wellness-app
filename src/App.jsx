@@ -83,6 +83,7 @@ function calcScore(log, habits, goals, weights) {
 }
 
 // Value for goal auto-tracking
+// Returns today's numeric value for a given habit (for goal tracking)
 function habitValue(log, id) {
   switch (id) {
     case "water":      return log.water || 0;
@@ -94,10 +95,32 @@ function habitValue(log, id) {
     case "reading":    return log.readingPages || 0;
     case "screenTime": return log.screenTime || 0;
     case "selfCare":   return log.selfCare?.length || 0;
-    case "sweets":     return log.sweets === 0 ? 1 : 0; // 1 clean day
+    case "sweets":     return log.sweets === 0 ? 1 : 0;
     default:           return 0;
   }
 }
+
+// For streak goals: did today meet the daily threshold?
+function meetsThreshold(log, id, threshold) {
+  const val = habitValue(log, id);
+  // For sweets: threshold means "max allowed", so meeting = val <= threshold
+  if (id === "sweets") return (log.sweets !== null) && val >= 1; // clean day
+  return val >= threshold;
+}
+
+// Suggested defaults per habit for each goal type
+const HABIT_GOAL_DEFAULTS = {
+  water:      { cumUnit:"glasses total", streakUnit:"glasses/day", streakDefault:6,   cumDefault:56  },
+  steps:      { cumUnit:"steps total",   streakUnit:"steps/day",   streakDefault:8000, cumDefault:50000 },
+  workout:    { cumUnit:"sessions",      streakUnit:"days/week",   streakDefault:3,   cumDefault:12  },
+  running:    { cumUnit:"km total",      streakUnit:"km/run",      streakDefault:3,   cumDefault:30  },
+  sleep:      { cumUnit:"hours total",   streakUnit:"hours/night", streakDefault:7,   cumDefault:56  },
+  learning:   { cumUnit:"min total",     streakUnit:"min/day",     streakDefault:30,  cumDefault:300 },
+  reading:    { cumUnit:"pages total",   streakUnit:"pages/day",   streakDefault:10,  cumDefault:100 },
+  selfCare:   { cumUnit:"rituals total", streakUnit:"rituals/day", streakDefault:1,   cumDefault:20  },
+  screenTime: { cumUnit:"min total",     streakUnit:"min/day",     streakDefault:120, cumDefault:600 },
+  sweets:     { cumUnit:"clean days",    streakUnit:"clean days",  streakDefault:1,   cumDefault:7   },
+};
 
 // ─────────────────────────────────────────────────────────────
 // BLOB
@@ -164,64 +187,158 @@ function WeightDots({ value, onChange }) {
 // ─────────────────────────────────────────────────────────────
 // GOAL MODAL
 // ─────────────────────────────────────────────────────────────
+// GoalModal — supports two goal types:
+// "cumulative": total over period (e.g. run 100km this month)
+// "streak": hit a daily target N days in the period (e.g. drink 8 glasses every day for 7 days)
 function GoalModal({ habits, onSave, onClose, initial }) {
-  const [name,   setName]   = useState(initial?.name   || "");
-  const [target, setTarget] = useState(initial?.target?.toString() || "");
-  const [unit,   setUnit]   = useState(initial?.unit   || "");
-  const [period, setPeriod] = useState(initial?.period || "weekly");
-  const [linked, setLinked] = useState(initial?.linkedHabit || "");
+  const [name,      setName]      = useState(initial?.name       || "");
+  const [goalType,  setGoalType]  = useState(initial?.goalType   || "cumulative");
+  const [target,    setTarget]    = useState(initial?.target?.toString() || "");
+  const [threshold, setThreshold] = useState(initial?.threshold?.toString() || ""); // streak: daily minimum
+  const [unit,      setUnit]      = useState(initial?.unit       || "");
+  const [period,    setPeriod]    = useState(initial?.period     || "weekly");
+  const [linked,    setLinked]    = useState(initial?.linkedHabit || "");
 
-  const linkable = habits.filter(h => !["mood"].includes(h));
+  const linkable = habits.filter(h => !["mood","food"].includes(h));
 
-  const pick = id => {
+  const pick = (id) => {
     setLinked(id);
-    if (id) { const d = ALL_HABITS.find(x => x.id===id); if (d?.unit) setUnit(d.unit); }
+    if (!id) return;
+    const def = HABIT_GOAL_DEFAULTS[id];
+    if (!def) return;
+    if (goalType === "streak") {
+      setUnit("days");
+      setThreshold(def.streakDefault.toString());
+      if (!target) setTarget(period === "weekly" ? "7" : "30");
+    } else {
+      setUnit(def.cumUnit);
+      if (!target) setTarget(def.cumDefault.toString());
+    }
+  };
+
+  const switchType = (type) => {
+    setGoalType(type);
+    if (linked) {
+      const def = HABIT_GOAL_DEFAULTS[linked];
+      if (!def) return;
+      if (type === "streak") {
+        setUnit("days");
+        setThreshold(def.streakDefault.toString());
+        setTarget(period === "weekly" ? "7" : "30");
+      } else {
+        setUnit(def.cumUnit);
+        setThreshold("");
+      }
+    }
   };
 
   const submit = () => {
     if (!name.trim() || !target || isNaN(+target) || +target <= 0) return;
-    onSave({ id:initial?.id||Date.now(), name:name.trim(), target:+target, unit:unit.trim(), period, linkedHabit:linked, accumulatedProgress:initial?.accumulatedProgress||0 });
+    if (goalType === "streak" && linked && (!threshold || isNaN(+threshold))) return;
+    onSave({
+      id: initial?.id || Date.now(),
+      name: name.trim(),
+      goalType,
+      target: +target,
+      threshold: goalType === "streak" ? +threshold : null,
+      unit: unit.trim(),
+      period,
+      linkedHabit: linked,
+      accumulatedProgress: initial?.accumulatedProgress || 0,
+      streakDays: initial?.streakDays || 0, // days already counted
+    });
     onClose();
   };
 
   const inp = { width:"100%", padding:"10px 13px", borderRadius:11, border:"1.5px solid rgba(139,119,95,.2)", background:"rgba(255,255,255,.8)", fontFamily:"inherit", fontSize:14, color:"#3d3530", outline:"none", boxSizing:"border-box" };
+  const typeBtn = (t, label, desc) => (
+    <button onClick={() => switchType(t)} style={{ flex:1, padding:"10px 8px", borderRadius:12, border:"1.5px solid "+(goalType===t?"#8ab890":"rgba(139,119,95,.16)"), background:goalType===t?"rgba(138,184,144,.1)":"transparent", cursor:"pointer", fontFamily:"inherit", textAlign:"left" }}>
+      <div style={{ fontSize:12, color:goalType===t?"#4a6e4a":"#5c4f42", marginBottom:2 }}>{label}</div>
+      <div style={{ fontSize:10, color:"#8b7763", fontStyle:"italic", lineHeight:1.3 }}>{desc}</div>
+    </button>
+  );
+
+  const maxDays = period === "weekly" ? 7 : 31;
 
   return (
     <div onClick={e => { if(e.target===e.currentTarget) onClose(); }} style={{ position:"fixed", inset:0, background:"rgba(60,50,40,.35)", zIndex:200, display:"flex", alignItems:"flex-end", backdropFilter:"blur(4px)" }}>
-      <div style={{ width:"100%", background:"#faf8f3", borderRadius:"22px 22px 0 0", padding:"28px 22px 44px", boxShadow:"0 -8px 32px rgba(139,119,95,.18)" }}>
+      <div style={{ width:"100%", maxHeight:"92vh", overflowY:"auto", background:"#faf8f3", borderRadius:"22px 22px 0 0", padding:"28px 22px 44px", boxShadow:"0 -8px 32px rgba(139,119,95,.18)" }}>
         <div style={{ width:36, height:3, background:"rgba(139,119,95,.2)", borderRadius:2, margin:"0 auto 22px" }}/>
         <h3 style={{ fontSize:18, fontWeight:300, color:"#3d3530", marginBottom:18 }}>{initial?"edit goal":"new goal"}</h3>
 
-        <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>goal name</label>
-        <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. read 100 pages this month" style={{ ...inp, marginBottom:13 }}/>
-
-        <div style={{ display:"flex", gap:10, marginBottom:13 }}>
-          <div style={{ flex:1 }}>
-            <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>target</label>
-            <input type="number" value={target} onChange={e=>setTarget(e.target.value)} placeholder="100" style={inp}/>
-          </div>
-          <div style={{ flex:1 }}>
-            <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>unit</label>
-            <input value={unit} onChange={e=>setUnit(e.target.value)} placeholder="pages, km..." style={inp}/>
-          </div>
+        {/* Goal type */}
+        <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:8 }}>type</label>
+        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+          {typeBtn("cumulative","📈 cumulative","total over the period — e.g. run 50 km this month")}
+          {typeBtn("streak","🔥 daily streak","hit a daily target N days — e.g. drink 8 glasses every day")}
         </div>
 
+        {/* Name */}
+        <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>goal name</label>
+        <input value={name} onChange={e=>setName(e.target.value)}
+          placeholder={goalType==="streak" ? "e.g. drink water every day" : "e.g. run 50 km this month"}
+          style={{ ...inp, marginBottom:13 }}/>
+
+        {/* Period */}
         <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>period</label>
         <div style={{ display:"flex", gap:8, marginBottom:13 }}>
           {["weekly","monthly"].map(p => (
-            <button key={p} onClick={()=>setPeriod(p)} style={{ flex:1, padding:9, borderRadius:11, border:"1.5px solid "+(period===p?"#8ab890":"rgba(139,119,95,.18)"), background:period===p?"rgba(138,184,144,.1)":"transparent", color:period===p?"#4a6e4a":"#8b7763", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>{p}</button>
+            <button key={p} onClick={()=>{ setPeriod(p); if(goalType==="streak"&&linked&&!target) setTarget(p==="weekly"?"7":"30"); }}
+              style={{ flex:1, padding:9, borderRadius:11, border:"1.5px solid "+(period===p?"#8ab890":"rgba(139,119,95,.18)"), background:period===p?"rgba(138,184,144,.1)":"transparent", color:period===p?"#4a6e4a":"#8b7763", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+              {p}
+            </button>
           ))}
         </div>
 
-        <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>link to habit (auto-tracks)</label>
+        {/* Target fields */}
+        {goalType === "cumulative" ? (
+          <div style={{ display:"flex", gap:10, marginBottom:13 }}>
+            <div style={{ flex:1 }}>
+              <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>total target</label>
+              <input type="number" value={target} onChange={e=>setTarget(e.target.value)} placeholder="100" style={inp}/>
+            </div>
+            <div style={{ flex:1 }}>
+              <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>unit</label>
+              <input value={unit} onChange={e=>setUnit(e.target.value)} placeholder="km, pages..." style={inp}/>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ background:"rgba(138,184,144,.07)", borderRadius:11, padding:"10px 13px", marginBottom:13, fontSize:12, color:"#5a7a5a", fontStyle:"italic", lineHeight:1.5 }}>
+              {linked
+                ? `reach ${threshold||"?"} ${HABIT_GOAL_DEFAULTS[linked]?.streakUnit||"units"} on ${target||"?"} out of ${maxDays} days`
+                : `hit your daily target on ${target||"?"} out of ${maxDays} days`}
+            </div>
+            <div style={{ display:"flex", gap:10, marginBottom:13 }}>
+              <div style={{ flex:1 }}>
+                <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>target days</label>
+                <input type="number" value={target} onChange={e=>setTarget(e.target.value)} placeholder={period==="weekly"?"7":"30"} style={inp}/>
+              </div>
+              {linked && linked !== "workout" && linked !== "sweets" && (
+                <div style={{ flex:1 }}>
+                  <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>daily minimum</label>
+                  <input type="number" value={threshold} onChange={e=>setThreshold(e.target.value)}
+                    placeholder={HABIT_GOAL_DEFAULTS[linked]?.streakDefault?.toString()||"1"} style={inp}/>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Habit link */}
+        <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>
+          {goalType==="streak" ? "track habit (auto)" : "link to habit (auto-tracks)"}
+        </label>
         <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:linked?10:20 }}>
-          <button onClick={()=>pick("")} style={{ padding:"7px 12px", borderRadius:14, border:"1.5px solid "+(linked===""?"#c4a882":"rgba(139,119,95,.15)"), background:linked===""?"rgba(196,168,130,.1)":"transparent", fontSize:12, color:linked===""?"#8b6b3d":"#8b7763", cursor:"pointer", fontFamily:"inherit" }}>none (manual)</button>
+          <button onClick={()=>{ setLinked(""); setThreshold(""); }} style={{ padding:"7px 12px", borderRadius:14, border:"1.5px solid "+(linked===""?"#c4a882":"rgba(139,119,95,.15)"), background:linked===""?"rgba(196,168,130,.1)":"transparent", fontSize:12, color:linked===""?"#8b6b3d":"#8b7763", cursor:"pointer", fontFamily:"inherit" }}>
+            {goalType==="streak"?"manual":"none (manual)"}
+          </button>
           {linkable.map(id => {
             const d = ALL_HABITS.find(x=>x.id===id); if(!d) return null;
             return <button key={id} onClick={()=>pick(id)} style={{ padding:"7px 12px", borderRadius:14, border:"1.5px solid "+(linked===id?"#8ab890":"rgba(139,119,95,.15)"), background:linked===id?"rgba(138,184,144,.1)":"transparent", fontSize:12, color:linked===id?"#4a6e4a":"#8b7763", cursor:"pointer", fontFamily:"inherit" }}>{d.emoji} {d.label}</button>;
           })}
         </div>
-        {linked && <p style={{ fontSize:11, color:"#8ab890", fontStyle:"italic", margin:"0 0 16px" }}>progress updates automatically from today's log ✨</p>}
+        {linked && <p style={{ fontSize:11, color:"#8ab890", fontStyle:"italic", margin:"0 0 16px" }}>updates automatically from your daily log ✨</p>}
 
         <button onClick={submit} style={{ width:"100%", padding:14, borderRadius:14, border:"none", background:"linear-gradient(135deg,#8ab890,#5a7a5a)", color:"#fff", fontSize:14, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 14px rgba(90,122,90,.22)" }}>
           {initial?"save changes ✨":"add goal ✨"}
@@ -242,11 +359,20 @@ function GoalsTab({ goals, setGoals, log, habits }) {
   const remove = id => setGoals(p => p.filter(g=>g.id!==id));
   const nudge  = (id,d) => setGoals(p => p.map(g => g.id!==id ? g : { ...g, accumulatedProgress:Math.max(0,(g.accumulatedProgress||0)+d) }));
 
-  const getProgress = g => g.linkedHabit
-    ? (g.accumulatedProgress||0) + habitValue(log, g.linkedHabit)
-    : (g.accumulatedProgress||0);
+  // For cumulative goals: past accumulated + today's value
+  // For streak goals: past streak days + (did today meet threshold? 1 : 0)
+  const getProgress = (g) => {
+    if (!g.linkedHabit) return g.accumulatedProgress || 0;
+    if (g.goalType === "streak") {
+      const todayMet = meetsThreshold(log, g.linkedHabit, g.threshold);
+      return (g.streakDays || 0) + (todayMet ? 1 : 0);
+    }
+    return (g.accumulatedProgress || 0) + habitValue(log, g.linkedHabit);
+  };
 
   const filtered = goals.filter(g => filter==="all"||g.period===filter);
+
+  const nudgeBtn = (style) => ({ ...style, width:24, height:24, borderRadius:"50%", border:"1.5px solid rgba(139,119,95,.2)", background:"transparent", cursor:"pointer", color:"#8b7763", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" });
 
   return (
     <>
@@ -263,27 +389,51 @@ function GoalsTab({ goals, setGoals, log, habits }) {
         <div style={{ margin:"0 16px", background:"rgba(255,255,255,.58)", borderRadius:16, padding:"36px 20px", textAlign:"center", boxShadow:"0 2px 12px rgba(139,119,95,.07)" }}>
           <div style={{ fontSize:28, marginBottom:10 }}>🎯</div>
           <div style={{ fontSize:14, color:"#8b7763", fontStyle:"italic" }}>no goals yet</div>
-          <div style={{ fontSize:12, color:"#a89880", marginTop:5 }}>tap + add goal to create your first target</div>
+          <div style={{ fontSize:12, color:"#a89880", marginTop:5 }}>tap + add goal to get started</div>
         </div>
       )}
 
       {filtered.map(goal => {
-        const progress = getProgress(goal);
-        const target   = Math.max(goal.target||1, 0.001);
-        const pct      = Math.min(Math.round((progress/target)*100), 100);
-        const bar      = pct>=100?"linear-gradient(90deg,#8ab890,#5a7a5a)":pct>=60?"linear-gradient(90deg,#c4d4a8,#8ab890)":"linear-gradient(90deg,#d4c4a8,#c4a882)";
-        const hDef     = goal.linkedHabit ? ALL_HABITS.find(x=>x.id===goal.linkedHabit) : null;
+        const progress  = getProgress(goal);
+        const target    = Math.max(goal.target || 1, 0.001);
+        const pct       = Math.min(Math.round((progress / target) * 100), 100);
+        const bar       = pct>=100?"linear-gradient(90deg,#8ab890,#5a7a5a)":pct>=60?"linear-gradient(90deg,#c4d4a8,#8ab890)":"linear-gradient(90deg,#d4c4a8,#c4a882)";
+        const hDef      = goal.linkedHabit ? ALL_HABITS.find(x=>x.id===goal.linkedHabit) : null;
+        const isStreak  = goal.goalType === "streak";
+        const isLinked  = !!goal.linkedHabit;
+
+        // Streak: did today count?
+        const todayMet  = isStreak && isLinked && meetsThreshold(log, goal.linkedHabit, goal.threshold);
+        const hDefaults = goal.linkedHabit ? HABIT_GOAL_DEFAULTS[goal.linkedHabit] : null;
+
+        // Subtitle
+        let subtitle = "";
+        if (isStreak && isLinked && goal.threshold) {
+          subtitle = `${goal.threshold}+ ${hDefaults?.streakUnit||"units"} · ${goal.period}`;
+        } else if (!isStreak) {
+          subtitle = `${progress} / ${goal.target} ${goal.unit}`;
+        } else {
+          subtitle = `${progress} / ${goal.target} days · ${goal.period}`;
+        }
+
         return (
           <div key={goal.id} style={{ margin:"0 16px 9px" }}>
             <div style={{ borderRadius:13, padding:"13px 14px", background:"rgba(255,255,255,.5)", border:"1px solid rgba(139,119,95,.09)" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, color:"#3d3530" }}>{goal.name}</div>
-                  <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3, flexWrap:"wrap" }}>
-                    <span style={{ fontSize:11, color:"#8b7763", fontStyle:"italic" }}>{progress} / {goal.target} {goal.unit}</span>
-                    {hDef&&<span style={{ fontSize:10, color:"#8ab890", background:"rgba(138,184,144,.1)", padding:"1px 7px", borderRadius:8 }}>{hDef.emoji} auto</span>}
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ fontSize:11, color:isStreak?"#c4a882":"#8ab890", background:isStreak?"rgba(196,168,130,.1)":"rgba(138,184,144,.08)", padding:"1px 7px", borderRadius:8 }}>
+                      {isStreak ? "🔥 streak" : "📈 cumulative"}
+                    </span>
                     <span style={{ fontSize:10, color:"#a89880", background:"rgba(139,119,95,.07)", padding:"1px 7px", borderRadius:8 }}>{goal.period}</span>
                   </div>
+                  <div style={{ fontSize:13, color:"#3d3530", marginTop:5 }}>{goal.name}</div>
+                  <div style={{ fontSize:11, color:"#8b7763", fontStyle:"italic", marginTop:2 }}>{subtitle}</div>
+                  {isStreak && isLinked && (
+                    <div style={{ fontSize:11, marginTop:4, color:todayMet?"#5a7a5a":"#a89880", fontStyle:"italic" }}>
+                      {todayMet ? "✓ today counts!" : "not yet today"}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                   <span style={{ fontSize:20, fontWeight:300, color:pct>=100?"#5a7a5a":"#8b7763" }}>{pct}%</span>
@@ -291,17 +441,23 @@ function GoalsTab({ goals, setGoals, log, habits }) {
                   <button onClick={()=>remove(goal.id)} style={{ background:"none", border:"none", color:"rgba(139,119,95,.3)", fontSize:18, cursor:"pointer", padding:0, lineHeight:1 }}>×</button>
                 </div>
               </div>
+
               <div style={{ height:6, borderRadius:3, background:"rgba(139,119,95,.08)", overflow:"hidden", marginTop:9 }}>
                 <div style={{ height:"100%", width:pct+"%", background:bar, borderRadius:3, transition:"width 1s ease" }}/>
               </div>
-              {!goal.linkedHabit && (
+
+              {/* Manual update for non-linked goals */}
+              {!isLinked && (
                 <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:9 }}>
-                  <span style={{ fontSize:11, color:"#8b7763", fontStyle:"italic" }}>update:</span>
-                  <button onClick={()=>nudge(goal.id,-1)} style={{ width:24, height:24, borderRadius:"50%", border:"1.5px solid rgba(139,119,95,.2)", background:"transparent", cursor:"pointer", color:"#8b7763", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
+                  <span style={{ fontSize:11, color:"#8b7763", fontStyle:"italic" }}>
+                    {isStreak ? "days hit:" : "add progress:"}
+                  </span>
+                  <button onClick={()=>nudge(goal.id,-1)} style={nudgeBtn({})}>−</button>
                   <span style={{ fontSize:13, fontWeight:300, color:"#5a7a5a", minWidth:24, textAlign:"center" }}>{goal.accumulatedProgress||0}</span>
-                  <button onClick={()=>nudge(goal.id,1)} style={{ width:24, height:24, borderRadius:"50%", border:"1.5px solid rgba(139,119,95,.2)", background:"transparent", cursor:"pointer", color:"#8b7763", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
+                  <button onClick={()=>nudge(goal.id,1)} style={nudgeBtn({})}>+</button>
                 </div>
               )}
+
               {pct>=100 && <div style={{ fontSize:11, color:"#5a7a5a", marginTop:6, fontStyle:"italic" }}>goal reached ✨</div>}
             </div>
           </div>
