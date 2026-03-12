@@ -53,63 +53,32 @@ const EMPTY_LOG = {
 // SCORE — starts at 0, only logged habits contribute
 // ─────────────────────────────────────────────────────────────
 function calcScore(log, habits, goals, weights) {
-  if (!habits.filter(h => h !== "mood").length) return 0;
-  let earned = 0, totalW = 0;
+  // totalW = ALL active scorable habits (full denominator always)
+  // earned = only from habits actually logged today
+  // This way: logging only water gives partial score, not 100%
+  const scorable = habits.filter(h => h !== "mood");
+  if (!scorable.length) return 0;
+  const totalW = scorable.reduce((sum, id) => sum + (weights[id] ?? 5), 0);
+  if (totalW === 0) return 0;
 
-  const add = (id, ratio) => {
-    const w = weights[id] ?? 5;
-    earned += Math.max(0, Math.min(1, ratio)) * w;
-    totalW += w;
-  };
+  let earned = 0;
+  const add = (id, ratio) => { earned += Math.max(0, Math.min(1, ratio)) * (weights[id] ?? 5); };
 
-  // water: ratio vs goal, only if logged
-  if (habits.includes("water") && log.water > 0)
-    add("water", log.water / (goals.water || 8));
-
-  // steps: ratio vs goal
-  if (habits.includes("steps") && log.steps > 0)
-    add("steps", log.steps / (goals.steps || 10000));
-
-  // workout: binary
-  if (habits.includes("workout") && log.workout)
-    add("workout", 1);
-
-  // running: ratio vs goal km
-  if (habits.includes("running") && log.runKm > 0)
-    add("running", log.runKm / (goals.running || 5));
-
-  // sleep: ratio vs goal
-  if (habits.includes("sleep") && log.sleep > 0)
-    add("sleep", log.sleep / (goals.sleep || 8));
-
-  // learning: time ratio × productivity boost
-  if (habits.includes("learning") && log.learningTime > 0)
-    add("learning", (log.learningTime / (goals.learning || 60)) * (0.5 + ((log.learningProductivity||5)/10)*0.5));
-
-  // reading: pages ratio
-  if (habits.includes("reading") && log.readingPages > 0)
-    add("reading", log.readingPages / (goals.reading || 20));
-
-  // sweets: 0=perfect(1.0), 1=0.75, 2=0.5, 3=0.25, 4+=0  — only if logged
-  if (habits.includes("sweets") && log.sweets !== null)
-    add("sweets", Math.max(0, 1 - log.sweets / 4));
-
-  // food: 1(great)=1.0, 3(ok)=0.5, 5(bad)=0 — only if logged
-  if (habits.includes("food") && log.foodQuality !== null)
-    add("food", 1 - (log.foodQuality - 1) / 4);
-
-  // screenTime: only score if user logged total screen time
-  // social media ≤60min = 1.0, ≥180min = 0
+  if (habits.includes("water")      && log.water > 0)            add("water",      log.water / (goals.water||8));
+  if (habits.includes("steps")      && log.steps > 0)            add("steps",      log.steps / (goals.steps||10000));
+  if (habits.includes("workout")    && log.workout)              add("workout",    1);
+  if (habits.includes("running")    && log.runKm > 0)            add("running",    log.runKm / (goals.running||5));
+  if (habits.includes("sleep")      && log.sleep > 0)            add("sleep",      log.sleep / (goals.sleep||8));
+  if (habits.includes("learning")   && log.learningTime > 0)     add("learning",   (log.learningTime/(goals.learning||60)) * (0.5+((log.learningProductivity||5)/10)*0.5));
+  if (habits.includes("reading")    && log.readingPages > 0)     add("reading",    log.readingPages / (goals.reading||20));
+  if (habits.includes("sweets")     && log.sweets !== null)      add("sweets",     Math.max(0, 1 - log.sweets/4));
+  if (habits.includes("food")       && log.foodQuality !== null) add("food",       1 - (log.foodQuality-1)/4);
   if (habits.includes("screenTime") && log.screenTime > 0) {
     const s = log.socialMedia || 0;
-    add("screenTime", s <= 60 ? 1 : Math.max(0, 1 - (s - 60) / 120));
+    add("screenTime", s <= 60 ? 1 : Math.max(0, 1-(s-60)/120));
   }
+  if (habits.includes("selfCare") && log.selfCare?.length > 0)   add("selfCare",   Math.min(log.selfCare.length/3, 1));
 
-  // selfCare: 1 ritual=0.33, 2=0.67, 3+=1.0
-  if (habits.includes("selfCare") && log.selfCare?.length > 0)
-    add("selfCare", Math.min(log.selfCare.length / 3, 1));
-
-  if (totalW === 0) return 0;
   return Math.min(Math.round((earned / totalW) * 100), 100);
 }
 
@@ -750,7 +719,7 @@ function MainApp({ profile: init, user, onSignOut }) {
               <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(139,119,95,.1)" strokeWidth="4"/>
               <circle cx="32" cy="32" r="26" fill="none" stroke="url(#sg)" strokeWidth="4" strokeLinecap="round"
                 strokeDasharray={`${(score/100)*(2*Math.PI*26)} ${2*Math.PI*26}`}
-                strokeDashoffset={(2*Math.PI*26)*0.25} style={{transition:"stroke-dasharray 1s"}}/>
+                transform="rotate(-90 32 32)" style={{transition:"stroke-dasharray 1s"}}/>
               <defs><linearGradient id="sg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#8ab890"/><stop offset="100%" stopColor="#5a7a5a"/></linearGradient></defs>
             </svg>
             <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", fontSize:16, fontWeight:300, color:"#5a7a5a" }}>{score}</div>
