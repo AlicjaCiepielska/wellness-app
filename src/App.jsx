@@ -112,6 +112,24 @@ function meetsThreshold(log, id, threshold) {
   return habitValue(log, id) >= (threshold ?? def.streakDefault);
 }
 
+// Format minutes as "1h 30min" or "45min"
+function fmtTime(m) {
+  if (!m || m <= 0) return "0min";
+  const h = Math.floor(m / 60), mn = m % 60;
+  if (h > 0 && mn > 0) return `${h}h ${mn}min`;
+  if (h > 0) return `${h}h`;
+  return `${mn}min`;
+}
+
+// Which habits store values in minutes
+const TIME_HABITS = ["learning", "screenTime"];
+
+// Format a goal value — minutes for time habits, raw for others
+function fmtGoalVal(val, habitId) {
+  if (TIME_HABITS.includes(habitId)) return fmtTime(val);
+  return val;
+}
+
 // Per-habit goal config
 // direction: "min" = need at least N (water, steps, sleep...)
 //            "max" = need at most N (screenTime, sweets)
@@ -121,10 +139,10 @@ const HABIT_GOAL_DEFAULTS = {
   workout:    { direction:"min", cumUnit:"sessions", streakLabel:"sessions/period", streakDefault:1,    cumDefault:12,    streakHint:"at least 1 workout"   },
   running:    { direction:"min", cumUnit:"km",       streakLabel:"min km/run",      streakDefault:3,    cumDefault:30,    streakHint:"at least {n} km"      },
   sleep:      { direction:"min", cumUnit:"hours",    streakLabel:"min hours/night", streakDefault:7,    cumDefault:49,    streakHint:"at least {n} hours"   },
-  learning:   { direction:"min", cumUnit:"min",      streakLabel:"min min/day",     streakDefault:30,   cumDefault:300,   streakHint:"at least {n} min"     },
+  learning:   { direction:"min", cumUnit:"min",      streakLabel:"min time/day",    streakDefault:30,   cumDefault:300,   streakHint:"at least {n} min",   isTime:true },
   reading:    { direction:"min", cumUnit:"pages",    streakLabel:"min pages/day",   streakDefault:10,   cumDefault:100,   streakHint:"at least {n} pages"   },
   selfCare:   { direction:"min", cumUnit:"rituals",  streakLabel:"rituals/day",     streakDefault:1,    cumDefault:20,    streakHint:"at least {n} ritual"  },
-  screenTime: { direction:"max", cumUnit:"min",      streakLabel:"max min/day",     streakDefault:120,  cumDefault:600,   streakHint:"max {n} min/day"      },
+  screenTime: { direction:"max", cumUnit:"min",      streakLabel:"max time/day",    streakDefault:120,  cumDefault:600,   streakHint:"max {n} min/day",  isTime:true },
   sweets:     { direction:"max", cumUnit:"clean days",streakLabel:"clean days",     streakDefault:0,    cumDefault:7,     streakHint:"sugar-free days"      },
 };
 
@@ -316,7 +334,8 @@ function GoalModal({ habits, onSave, onClose, initial }) {
                 if (!def) return `hit daily target on ${target||"?"} days`;
                 const dir = def.direction === "max" ? "max" : "min";
                 const thr = threshold || def.streakDefault;
-                return `${dir} ${thr} ${def.cumUnit}/day · on ${target||"?"} out of ${maxDays} days`;
+                const thrFmt = def.isTime ? fmtTime(+thr) : thr;
+                return `${dir} ${thrFmt}/day · on ${target||"?"} out of ${maxDays} days`;
               })() : `hit your daily target on ${target||"?"} out of ${maxDays} days`}
             </div>
             <div style={{ display:"flex", gap:10, marginBottom:13 }}>
@@ -419,13 +438,17 @@ function GoalsTab({ goals, setGoals, log, habits }) {
 
         // Subtitle
         let subtitle = "";
+        const isTimeHabit = TIME_HABITS.includes(goal.linkedHabit);
         if (isStreak && isLinked && goal.threshold != null) {
           const dir = hDefaults?.direction === "max" ? "max" : "min";
-          subtitle = `${dir} ${goal.threshold} ${hDefaults?.cumUnit||"units"}/day · ${progress}/${goal.target} days`;
+          const thrFmt = isTimeHabit ? fmtTime(goal.threshold) : goal.threshold;
+          subtitle = `${dir} ${thrFmt}/day · ${progress}/${goal.target} days`;
         } else if (isStreak && !isLinked) {
           subtitle = `${progress} / ${goal.target} days`;
         } else {
-          subtitle = `${progress} / ${goal.target} ${goal.unit}`;
+          const pFmt = isTimeHabit ? fmtTime(progress) : progress;
+          const tFmt = isTimeHabit ? fmtTime(goal.target) : goal.target;
+          subtitle = `${pFmt} / ${tFmt} ${isTimeHabit ? "" : goal.unit}`.trim();
         }
 
         return (
@@ -507,9 +530,9 @@ function SettingsTab({ habits, setHabits, goals, setGoals, selfCarePool, setSelf
     { key:"steps",      label:"🌿 steps",    unit:"per day",  min:1000, max:30000, step:1000 },
     { key:"sleep",      label:"🌙 sleep",    unit:"hours",    min:4,    max:12,    step:0.5  },
     { key:"running",    label:"🏃 running",  unit:"km",       min:1,    max:42,    step:0.5  },
-    { key:"learning",   label:"📚 learning", unit:"min/day",  min:10,   max:240,   step:10   },
+    { key:"learning",   label:"📚 learning", unit:"min/day",  min:10,   max:240,   step:10,  isTime:true },
     { key:"reading",    label:"📖 reading",  unit:"pages/day",min:5,    max:200,   step:5    },
-    { key:"screenTime", label:"📱 screen",   unit:"limit min",min:30,   max:600,   step:15   },
+    { key:"screenTime", label:"📱 screen",   unit:"limit",    min:30,   max:600,   step:15,  isTime:true },
   ].filter(c => habits.includes(c.key));
 
   const scorable = habits.filter(h => h !== "mood");
@@ -552,12 +575,12 @@ function SettingsTab({ habits, setHabits, goals, setGoals, selfCarePool, setSelf
           <span style={{ color:"#8b7763", fontSize:10 }}>{open==="goals"?"▲":"▼"}</span>
         </div>
         {open==="goals" && <div style={body}>
-          {goalConfig.map(({ key, label, unit, min, max, step }) => (
+          {goalConfig.map(({ key, label, unit, min, max, step, isTime }) => (
             <div key={key} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid rgba(139,119,95,.07)" }}>
               <div><div style={{ fontSize:13, color:"#3d3530" }}>{label}</div><div style={{ fontSize:10, color:"#8b7763", fontStyle:"italic" }}>{unit}</div></div>
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                 <button style={stepB} onClick={()=>setGoals(p=>({...p,[key]:Math.max(min,+(p[key]||DEFAULT_GOALS[key]||0)-step)}))}>−</button>
-                <div style={{ textAlign:"center", minWidth:44, fontSize:17, fontWeight:300, color:"#5a7a5a" }}>{goals[key]||DEFAULT_GOALS[key]}</div>
+                <div style={{ textAlign:"center", minWidth:52, fontSize:isTime?14:17, fontWeight:300, color:"#5a7a5a" }}>{isTime ? fmtTime(goals[key]||DEFAULT_GOALS[key]) : (goals[key]||DEFAULT_GOALS[key])}</div>
                 <button style={stepB} onClick={()=>setGoals(p=>({...p,[key]:Math.min(max,+(p[key]||DEFAULT_GOALS[key]||0)+step)}))}>+</button>
               </div>
             </div>
@@ -668,9 +691,9 @@ function Onboarding({ onDone }) {
     { key:"steps",   label:"🌿 steps",    unit:"per day",  min:1000, max:30000, step:1000 },
     { key:"sleep",   label:"🌙 sleep",    unit:"hours",    min:4,    max:12,    step:0.5  },
     { key:"running", label:"🏃 running",  unit:"km",       min:1,    max:42,    step:0.5  },
-    { key:"learning",label:"📚 learning", unit:"min/day",  min:10,   max:240,   step:10   },
+    { key:"learning",label:"📚 learning", unit:"min/day",  min:10,   max:240,   step:10,  isTime:true },
     { key:"reading", label:"📖 reading",  unit:"pages/day",min:5,    max:200,   step:5    },
-    { key:"screenTime",label:"📱 screen", unit:"limit min",min:30,   max:600,   step:15   },
+    { key:"screenTime",label:"📱 screen", unit:"limit",    min:30,   max:600,   step:15,  isTime:true },
   ].filter(c => habits.includes(c.key));
 
   const W = {
@@ -731,12 +754,12 @@ function Onboarding({ onDone }) {
       <div style={{ flex:1, overflowY:"auto" }}>
         {goalConfig.length===0
           ? <p style={{ color:"#8b7763", fontStyle:"italic", textAlign:"center", paddingTop:40, fontSize:13 }}>no numeric goals for your selection 🌿</p>
-          : goalConfig.map(({ key, label, unit, min, max, step }) => (
+          : goalConfig.map(({ key, label, unit, min, max, step, isTime }) => (
             <div key={key} style={W.row}>
               <div><div style={{ fontSize:13, color:"#3d3530" }}>{label}</div><div style={{ fontSize:10, color:"#8b7763", fontStyle:"italic" }}>{unit}</div></div>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <button style={W.sB} onClick={()=>setGoals(p=>({...p,[key]:Math.max(min,+(p[key]||DEFAULT_GOALS[key]||0)-step)}))}>−</button>
-                <div style={{ textAlign:"center", minWidth:50, fontSize:19, fontWeight:300, color:"#5a7a5a" }}>{goals[key]||DEFAULT_GOALS[key]}</div>
+                <div style={{ textAlign:"center", minWidth:52, fontSize:isTime?14:19, fontWeight:300, color:"#5a7a5a" }}>{isTime ? fmtTime(goals[key]||DEFAULT_GOALS[key]) : (goals[key]||DEFAULT_GOALS[key])}</div>
                 <button style={W.sB} onClick={()=>setGoals(p=>({...p,[key]:Math.min(max,+(p[key]||DEFAULT_GOALS[key]||0)+step)}))}>+</button>
               </div>
             </div>
@@ -884,7 +907,7 @@ function CelebrationPopup({ goal, onClose }) {
               {goal.name}
             </div>
             <div style={{ display:"flex", gap:7, justifyContent:"center", marginBottom:16 }}>
-              <span style={{ fontSize:11, color:"#8b6b3d", background:"rgba(196,168,130,.12)", padding:"3px 11px", borderRadius:10 }}>{goal.target} {goal.unit}</span>
+              <span style={{ fontSize:11, color:"#8b6b3d", background:"rgba(196,168,130,.12)", padding:"3px 11px", borderRadius:10 }}>{TIME_HABITS.includes(goal.linkedHabit) ? fmtTime(goal.target) : `${goal.target} ${goal.unit}`}</span>
             </div>
             <div style={{ fontSize:13, color:"#5a7a5a", fontStyle:"italic", lineHeight:1.7 }}>
               you did it ✨<br/><span style={{ fontSize:11, color:"#8b7763" }}>trophy saved to your collection</span>
@@ -912,7 +935,7 @@ function TrophyCard({ trophy, index, isNew }) {
       </div>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontSize:13, color:"#3d3530", marginBottom:3, lineHeight:1.3 }}>{trophy.name}</div>
-        <div style={{ fontSize:10, color:"#8b7763", fontStyle:"italic" }}>{trophy.target} {trophy.unit}</div>
+        <div style={{ fontSize:10, color:"#8b7763", fontStyle:"italic" }}>{TIME_HABITS.includes(trophy.linkedHabit) ? fmtTime(trophy.target) : `${trophy.target} ${trophy.unit}`}</div>
         <div style={{ fontSize:10, color:"#a89880", marginTop:3 }}>{new Date(trophy.completedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
       </div>
       <div style={{ fontSize:16, opacity:.55 }}>{gold?"✨":"🌿"}</div>
@@ -1065,7 +1088,7 @@ function MainApp({ profile: init, user, onSignOut }) {
   // ── helpers ──
   const update   = (k,v) => setLog(p => { const n={...p,[k]:v}; saveLog(n); return n; });
   const togSC    = it => update("selfCare", log.selfCare.includes(it)?log.selfCare.filter(s=>s!==it):[...log.selfCare,it]);
-  const fmt      = m => { if(!m)return"0m"; const h=Math.floor(m/60),mn=m%60; return h>0?`${h}h${mn>0?` ${mn}m`:""}`:mn+"m"; };
+  const fmt      = fmtTime; // use global fmtTime
   const score    = calcScore(log, habits, goals, weights);
   const scoreLabel = score>=85?"glowing ✨":score>=65?"on track 🌿":score>=40?"building habits 🌸":score>=15?"starting fresh 🌱":"let's begin 🤍";
   const G = goals;

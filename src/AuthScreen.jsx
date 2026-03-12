@@ -1,16 +1,34 @@
 // src/AuthScreen.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   sendPasswordResetEmail,
   updateProfile,
 } from "firebase/auth";
 import { auth, googleProvider, appleProvider } from "./firebase";
 
+// Detect in-app browsers (Messenger, Instagram, TikTok, WeChat, etc.)
+function isInAppBrowser() {
+  const ua = navigator.userAgent || "";
+  return /FBAN|FBAV|Instagram|Line|KAKAOTALK|Twitter|LinkedInApp|Snapchat|TikTok|MicroMessenger|WebView/.test(ua)
+    || ((/iPhone|iPod|iPad/.test(ua)) && !window.safari)
+    || (/Android/.test(ua) && /wv/.test(ua));
+}
+
 export default function AuthScreen() {
   const [mode, setMode]       = useState("login"); // "login" | "register" | "reset"
+  const [inAppBrowser, setInAppBrowser] = useState(false);
+
+  // On mount: detect in-app browser + handle redirect result
+  useEffect(() => {
+    setInAppBrowser(isInAppBrowser());
+    // Handle Google redirect result (for in-app browser fallback)
+    getRedirectResult(auth).catch(() => {});
+  }, []);
   const [email, setEmail]     = useState("");
   const [password, setPassword] = useState("");
   const [name, setName]       = useState("");
@@ -58,14 +76,27 @@ export default function AuthScreen() {
   const handleGoogle = async () => {
     clearMessages();
     setLoading(true);
-    try { await signInWithPopup(auth, googleProvider); }
+    try {
+      if (isInAppBrowser()) {
+        await signInWithRedirect(auth, googleProvider);
+        // page will reload, no need to setLoading(false)
+      } else {
+        await signInWithPopup(auth, googleProvider);
+      }
+    }
     catch (e) { setError(friendlyError(e.code)); setLoading(false); }
   };
 
   const handleApple = async () => {
     clearMessages();
     setLoading(true);
-    try { await signInWithPopup(auth, appleProvider); }
+    try {
+      if (isInAppBrowser()) {
+        await signInWithRedirect(auth, appleProvider);
+      } else {
+        await signInWithPopup(auth, appleProvider);
+      }
+    }
     catch (e) { setError(friendlyError(e.code)); setLoading(false); }
   };
 
@@ -171,6 +202,12 @@ export default function AuthScreen() {
         {mode !== "reset" && (
           <>
             <div style={S.divider}>or continue with</div>
+            {inAppBrowser && (
+              <div style={{ fontSize:11, color:"#8b6b3d", background:"rgba(196,168,130,.12)", border:"1px solid rgba(196,168,130,.25)", borderRadius:10, padding:"9px 12px", marginBottom:10, textAlign:"center", lineHeight:1.5, fontStyle:"italic" }}>
+                📱 you're in an in-app browser — for the best experience, open this app in Chrome or Safari.<br/>
+                <span style={{color:"#5a7a5a"}}>Google/Apple sign-in will redirect and come back ✨</span>
+              </div>
+            )}
             <button style={S.outlineBtn("#4285F4")} onClick={handleGoogle} disabled={loading}>
               <svg width="16" height="16" viewBox="0 0 48 48">
                 <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.7 33.4 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 19.7-8 19.7-20 0-1.3-.1-2.7-.1-4z"/>
