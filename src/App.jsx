@@ -102,24 +102,30 @@ function habitValue(log, id) {
 
 // For streak goals: did today meet the daily threshold?
 function meetsThreshold(log, id, threshold) {
-  const val = habitValue(log, id);
-  // For sweets: threshold means "max allowed", so meeting = val <= threshold
-  if (id === "sweets") return (log.sweets !== null) && val >= 1; // clean day
-  return val >= threshold;
+  const def = HABIT_GOAL_DEFAULTS[id];
+  if (!def) return false;
+  if (id === "sweets") return log.sweets === 0; // clean day = logged 0
+  if (id === "screenTime") {
+    return log.screenTime > 0 && log.screenTime <= (threshold ?? 120);
+  }
+  if (def.direction === "max") return habitValue(log, id) <= (threshold ?? def.streakDefault);
+  return habitValue(log, id) >= (threshold ?? def.streakDefault);
 }
 
-// Suggested defaults per habit for each goal type
+// Per-habit goal config
+// direction: "min" = need at least N (water, steps, sleep...)
+//            "max" = need at most N (screenTime, sweets)
 const HABIT_GOAL_DEFAULTS = {
-  water:      { cumUnit:"glasses total", streakUnit:"glasses/day", streakDefault:6,   cumDefault:56  },
-  steps:      { cumUnit:"steps total",   streakUnit:"steps/day",   streakDefault:8000, cumDefault:50000 },
-  workout:    { cumUnit:"sessions",      streakUnit:"days/week",   streakDefault:3,   cumDefault:12  },
-  running:    { cumUnit:"km total",      streakUnit:"km/run",      streakDefault:3,   cumDefault:30  },
-  sleep:      { cumUnit:"hours total",   streakUnit:"hours/night", streakDefault:7,   cumDefault:56  },
-  learning:   { cumUnit:"min total",     streakUnit:"min/day",     streakDefault:30,  cumDefault:300 },
-  reading:    { cumUnit:"pages total",   streakUnit:"pages/day",   streakDefault:10,  cumDefault:100 },
-  selfCare:   { cumUnit:"rituals total", streakUnit:"rituals/day", streakDefault:1,   cumDefault:20  },
-  screenTime: { cumUnit:"min total",     streakUnit:"min/day",     streakDefault:120, cumDefault:600 },
-  sweets:     { cumUnit:"clean days",    streakUnit:"clean days",  streakDefault:1,   cumDefault:7   },
+  water:      { direction:"min", cumUnit:"glasses",  streakLabel:"min glasses/day", streakDefault:6,    cumDefault:42,    streakHint:"at least {n} glasses" },
+  steps:      { direction:"min", cumUnit:"steps",    streakLabel:"min steps/day",   streakDefault:8000, cumDefault:50000, streakHint:"at least {n} steps"   },
+  workout:    { direction:"min", cumUnit:"sessions", streakLabel:"sessions/period", streakDefault:1,    cumDefault:12,    streakHint:"at least 1 workout"   },
+  running:    { direction:"min", cumUnit:"km",       streakLabel:"min km/run",      streakDefault:3,    cumDefault:30,    streakHint:"at least {n} km"      },
+  sleep:      { direction:"min", cumUnit:"hours",    streakLabel:"min hours/night", streakDefault:7,    cumDefault:49,    streakHint:"at least {n} hours"   },
+  learning:   { direction:"min", cumUnit:"min",      streakLabel:"min min/day",     streakDefault:30,   cumDefault:300,   streakHint:"at least {n} min"     },
+  reading:    { direction:"min", cumUnit:"pages",    streakLabel:"min pages/day",   streakDefault:10,   cumDefault:100,   streakHint:"at least {n} pages"   },
+  selfCare:   { direction:"min", cumUnit:"rituals",  streakLabel:"rituals/day",     streakDefault:1,    cumDefault:20,    streakHint:"at least {n} ritual"  },
+  screenTime: { direction:"max", cumUnit:"min",      streakLabel:"max min/day",     streakDefault:120,  cumDefault:600,   streakHint:"max {n} min/day"      },
+  sweets:     { direction:"max", cumUnit:"clean days",streakLabel:"clean days",     streakDefault:0,    cumDefault:7,     streakHint:"sugar-free days"      },
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -305,9 +311,13 @@ function GoalModal({ habits, onSave, onClose, initial }) {
         ) : (
           <>
             <div style={{ background:"rgba(138,184,144,.07)", borderRadius:11, padding:"10px 13px", marginBottom:13, fontSize:12, color:"#5a7a5a", fontStyle:"italic", lineHeight:1.5 }}>
-              {linked
-                ? `reach ${threshold||"?"} ${HABIT_GOAL_DEFAULTS[linked]?.streakUnit||"units"} on ${target||"?"} out of ${maxDays} days`
-                : `hit your daily target on ${target||"?"} out of ${maxDays} days`}
+              {linked ? (() => {
+                const def = HABIT_GOAL_DEFAULTS[linked];
+                if (!def) return `hit daily target on ${target||"?"} days`;
+                const dir = def.direction === "max" ? "max" : "min";
+                const thr = threshold || def.streakDefault;
+                return `${dir} ${thr} ${def.cumUnit}/day · on ${target||"?"} out of ${maxDays} days`;
+              })() : `hit your daily target on ${target||"?"} out of ${maxDays} days`}
             </div>
             <div style={{ display:"flex", gap:10, marginBottom:13 }}>
               <div style={{ flex:1 }}>
@@ -316,7 +326,9 @@ function GoalModal({ habits, onSave, onClose, initial }) {
               </div>
               {linked && linked !== "workout" && linked !== "sweets" && (
                 <div style={{ flex:1 }}>
-                  <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>daily minimum</label>
+                  <label style={{ fontSize:11, letterSpacing:"2px", textTransform:"uppercase", color:"#8b7763", display:"block", marginBottom:6 }}>
+                    {HABIT_GOAL_DEFAULTS[linked]?.direction === "max" ? "daily maximum" : "daily minimum"}
+                  </label>
                   <input type="number" value={threshold} onChange={e=>setThreshold(e.target.value)}
                     placeholder={HABIT_GOAL_DEFAULTS[linked]?.streakDefault?.toString()||"1"} style={inp}/>
                 </div>
@@ -407,12 +419,13 @@ function GoalsTab({ goals, setGoals, log, habits }) {
 
         // Subtitle
         let subtitle = "";
-        if (isStreak && isLinked && goal.threshold) {
-          subtitle = `${goal.threshold}+ ${hDefaults?.streakUnit||"units"} · ${goal.period}`;
-        } else if (!isStreak) {
-          subtitle = `${progress} / ${goal.target} ${goal.unit}`;
+        if (isStreak && isLinked && goal.threshold != null) {
+          const dir = hDefaults?.direction === "max" ? "max" : "min";
+          subtitle = `${dir} ${goal.threshold} ${hDefaults?.cumUnit||"units"}/day · ${progress}/${goal.target} days`;
+        } else if (isStreak && !isLinked) {
+          subtitle = `${progress} / ${goal.target} days`;
         } else {
-          subtitle = `${progress} / ${goal.target} days · ${goal.period}`;
+          subtitle = `${progress} / ${goal.target} ${goal.unit}`;
         }
 
         return (
@@ -421,9 +434,6 @@ function GoalsTab({ goals, setGoals, log, habits }) {
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                 <div style={{ flex:1 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                    <span style={{ fontSize:11, color:isStreak?"#c4a882":"#8ab890", background:isStreak?"rgba(196,168,130,.1)":"rgba(138,184,144,.08)", padding:"1px 7px", borderRadius:8 }}>
-                      {isStreak ? "🔥 streak" : "📈 cumulative"}
-                    </span>
                     <span style={{ fontSize:10, color:"#a89880", background:"rgba(139,119,95,.07)", padding:"1px 7px", borderRadius:8 }}>{goal.period}</span>
                   </div>
                   <div style={{ fontSize:13, color:"#3d3530", marginTop:5 }}>{goal.name}</div>
