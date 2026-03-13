@@ -12,10 +12,17 @@ export async function loadTodayLog(uid) {
   } catch(e) { console.error("[db] loadTodayLog:", e.code); return null; }
 }
 
+// Load any specific day's log by YYYY-MM-DD string
+export async function loadDayLog(uid, dateStr) {
+  try {
+    const snap = await getDoc(doc(db, "users", uid, "logs", dateStr));
+    return snap.exists() ? { id: dateStr, ...snap.data() } : null;
+  } catch(e) { console.error("[db] loadDayLog:", e.code); return null; }
+}
+
 export async function saveTodayLog(uid, data) {
   try {
     const clean = JSON.parse(JSON.stringify(data));
-    // merge:false — always write full snapshot so stale fields from old versions can't linger
     await setDoc(doc(db, "users", uid, "logs", todayId()), { ...clean, updatedAt: new Date().toISOString() });
   } catch(e) { console.error("[db] saveTodayLog:", e.code); }
 }
@@ -24,7 +31,6 @@ export async function loadProfile(uid) {
   try {
     const snap = await getDoc(doc(db, "users", uid, "profile", "settings"));
     if (snap.exists()) return snap.data();
-    // fallback: old structure
     const snap2 = await getDoc(doc(db, "users", uid));
     return snap2.exists() ? snap2.data() : null;
   } catch(e) { console.error("[db] loadProfile:", e.code); return null; }
@@ -39,7 +45,7 @@ export async function saveProfile(uid, data) {
 
 export async function loadHistory(uid) {
   try {
-    const q = query(collection(db, "users", uid, "logs"), orderBy("updatedAt", "desc"), limit(30));
+    const q = query(collection(db, "users", uid, "logs"), orderBy("updatedAt", "desc"), limit(60));
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.id !== todayId());
   } catch(e) { console.error("[db] loadHistory:", e.code); return []; }

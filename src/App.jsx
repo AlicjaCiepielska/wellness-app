@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
-import { loadTodayLog, saveTodayLog, loadProfile, saveProfile } from "./db";
+import { loadTodayLog, loadDayLog, saveTodayLog, loadProfile, saveProfile, loadHistory } from "./db";
 import AuthScreen from "./AuthScreen";
 import {
   defaultNotifSettings,
@@ -34,6 +34,8 @@ const ALL_SELFCARE = [
   "walk outside 🌿","cooking healthy 🥗","nails 💅","tidying up 🧹","friends 👯",
   "creative hobby 🎨","morning routine 🌞","self massage 💆","bath 🛁",
   "reading 📖","yoga 🌙","cold shower 🚿","gratitude 🙏",
+  "movie night 🎬","music 🎵","dancing 💃","candles 🕯️","nap 😴",
+  "sunlight ☀️","flowers 🌸","tea ritual 🍵","digital detox 📵","declutter ✨",
 ];
 
 const MOOD_OPTIONS = ["✨ glowing","💪 strong","🔥 motivated","🌙 calm","😴 tired","😔 sad","😤 stressed"];
@@ -253,6 +255,7 @@ function GoalModal({ habits, onSave, onClose, initial }) {
   const submit = () => {
     if (!name.trim() || !target || isNaN(+target) || +target <= 0) return;
     if (goalType === "streak" && linked && (!threshold || isNaN(+threshold))) return;
+    const todayStr = new Date().toISOString().slice(0,10);
     onSave({
       id: initial?.id || Date.now(),
       name: name.trim(),
@@ -263,7 +266,8 @@ function GoalModal({ habits, onSave, onClose, initial }) {
       period,
       linkedHabit: linked,
       accumulatedProgress: initial?.accumulatedProgress || 0,
-      streakDays: initial?.streakDays || 0, // days already counted
+      streakDays: initial?.streakDays || 0,
+      lastSettled: initial?.lastSettled || todayStr, // don't double-count today on creation
     });
     onClose();
   };
@@ -614,7 +618,7 @@ function SettingsTab({ habits, setHabits, goals, setGoals, selfCarePool, setSelf
         </div>
         {open==="sc" && <div style={{ ...body, paddingTop:12 }}>
           <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
-            {ALL_SELFCARE.map(it => <div key={it} style={pill(selfCarePool.includes(it))} onClick={()=>setSelfCarePool(p=>p.includes(it)?p.filter(s=>s!==it):[...p,it])}>{it}</div>)}
+            {ALL_SELFCARE.map(it => <div key={it} style={pill(selfCarePool.includes(it))} onClick={()=>setSelfCarePool(selfCarePool.includes(it)?selfCarePool.filter(s=>s!==it):[...selfCarePool,it])}>{it}</div>)}
           </div>
         </div>}
       </div>}
@@ -1021,7 +1025,7 @@ function MainApp({ profile: init, user, onSignOut }) {
   // ── setters that also persist ──
   const setHabits  = v => { setHabitsS(v);   saveProf({habits:v});       };
   const setGoals   = v => { setGoalsS(v);    saveProf({goals:v});        };
-  const setScPool  = v => { setScPoolS(v);   saveProf({selfCarePool:v}); };
+  const setScPool  = v => { setScPoolS(v); saveProf({ selfCarePool: v }); };
   const setWeights = v => { setWeightsS(v);  saveProf({weights:v});      };
   const setBigGoals= v => { setBigGoalsS(v); };
   // save bigGoals + trophies whenever they change
@@ -1035,6 +1039,7 @@ function MainApp({ profile: init, user, onSignOut }) {
     if (!trophiesRef.current) { trophiesRef.current=true; return; }
     saveProf({ trophies });
   }, [trophies]); // eslint-disable-line
+
   const setNotif   = v => { setNotifS(v);    saveProf({notif:v});        };
 
   // ── auto-detect completed goals → trigger celebration ──
@@ -1061,6 +1066,15 @@ function MainApp({ profile: init, user, onSignOut }) {
     });
   }, [bigGoals, log]); // eslint-disable-line
 
+  // ── load history ──
+  const [historyLogs, setHistoryLogs] = useState(null); // null = not loaded yet
+
+  useEffect(() => {
+    if (!user || activeTab !== "history") return;
+    if (historyLogs !== null) return; // already loaded
+    loadHistory(user.uid).then(data => setHistoryLogs(data || [])).catch(() => setHistoryLogs([]));
+  }, [user, activeTab, historyLogs]);
+
   // ── load today's log ──
   useEffect(() => {
     if (!user) return;
@@ -1068,6 +1082,33 @@ function MainApp({ profile: init, user, onSignOut }) {
       if (data) { const {updatedAt,...rest}=data; setLog({...EMPTY_LOG,...rest}); }
     }).catch(e => console.error("loadLog", e));
   }, [user]);
+
+  // ── daily settle: each morning, lock yesterday's progress into goals ──
+  useEffect(() => {
+    if (!user || !bigGoals.length) return;
+    const todayStr = new Date().toISOString().slice(0,10);
+    const needsSettle = bigGoals.some(g => g.linkedHabit && !g.celebrated && g.lastSettled !== todayStr);
+    if (!needsSettle) return;
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = yesterday.toISOString().slice(0, 10);
+
+    loadDayLog(user.uid, yStr).then(yLog => {
+      setBigGoals(prev => prev.map(g => {
+        if (!g.linkedHabit || g.celebrated || g.lastSettled === todayStr) return g;
+        if (!yLog) return { ...g, lastSettled: todayStr }; // no log yesterday → just mark settled
+
+        if (g.goalType === "streak") {
+          const met = meetsThreshold(yLog, g.linkedHabit, g.threshold);
+          return { ...g, streakDays: (g.streakDays||0) + (met ? 1 : 0), lastSettled: todayStr };
+        } else {
+          const val = habitValue(yLog, g.linkedHabit);
+          return { ...g, accumulatedProgress: (g.accumulatedProgress||0) + val, lastSettled: todayStr };
+        }
+      }));
+    }).catch(e => console.error("settle", e));
+  }, [user, bigGoals.length]); // eslint-disable-line
 
   // ── save log (debounced) ──
   const saveLog = useCallback((nl) => {
@@ -1277,7 +1318,37 @@ function MainApp({ profile: init, user, onSignOut }) {
       </div>}
 
       {activeTab==="goals"   && <GoalsTab goals={bigGoals} setGoals={setBigGoals} log={log} habits={habits}/>}
-      {activeTab==="history" && <div style={S.sec}><div style={S.ttl}>📓 history</div><div style={{textAlign:"center",padding:28,color:"#8b7763",fontStyle:"italic"}}>your journey starts today 🌱</div></div>}
+      {activeTab==="history" && <div style={S.sec}>
+        <div style={S.ttl}>📓 history</div>
+        {historyLogs === null && <div style={{textAlign:"center",padding:28,color:"#8b7763",fontStyle:"italic"}}>loading... 🌿</div>}
+        {historyLogs !== null && historyLogs.length === 0 && <div style={{textAlign:"center",padding:28,color:"#8b7763",fontStyle:"italic"}}>no past days yet — check back tomorrow 🌱</div>}
+        {historyLogs !== null && historyLogs.map(day => {
+          const dayScore = calcScore(day, habits, goals, weights);
+          const dateStr  = new Date(day.id+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+          return (
+            <div key={day.id} style={{ marginBottom:10, padding:"12px 14px", borderRadius:13, background:"rgba(255,255,255,.5)", border:"1px solid rgba(139,119,95,.09)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                <span style={{ fontSize:13, color:"#3d3530" }}>{dateStr}</span>
+                <span style={{ fontSize:18, fontWeight:300, color:"#5a7a5a" }}>{dayScore}</span>
+              </div>
+              <div style={{ height:5, borderRadius:3, background:"rgba(139,119,95,.08)", overflow:"hidden" }}>
+                <div style={{ height:"100%", width:dayScore+"%", borderRadius:3, background:"linear-gradient(90deg,#8ab890,#5a7a5a)" }}/>
+              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8 }}>
+                {day.water>0 && <span style={{ fontSize:10, color:"#7bbcd4", background:"rgba(168,212,230,.15)", padding:"2px 8px", borderRadius:8 }}>💧 {day.water}g</span>}
+                {day.steps>0 && <span style={{ fontSize:10, color:"#5a7a5a", background:"rgba(138,184,144,.12)", padding:"2px 8px", borderRadius:8 }}>🌿 {(day.steps||0).toLocaleString()}</span>}
+                {day.sleep>0 && <span style={{ fontSize:10, color:"#8b7763", background:"rgba(196,168,130,.12)", padding:"2px 8px", borderRadius:8 }}>🌙 {day.sleep}h</span>}
+                {day.workout && <span style={{ fontSize:10, color:"#5a7a5a", background:"rgba(138,184,144,.12)", padding:"2px 8px", borderRadius:8 }}>💪 workout</span>}
+                {day.runKm>0 && <span style={{ fontSize:10, color:"#5a7a5a", background:"rgba(138,184,144,.12)", padding:"2px 8px", borderRadius:8 }}>🏃 {day.runKm}km</span>}
+                {day.learningTime>0 && <span style={{ fontSize:10, color:"#8b7763", background:"rgba(196,168,130,.12)", padding:"2px 8px", borderRadius:8 }}>📚 {fmtTime(day.learningTime)}</span>}
+                {day.readingPages>0 && <span style={{ fontSize:10, color:"#8b7763", background:"rgba(196,168,130,.12)", padding:"2px 8px", borderRadius:8 }}>📖 {day.readingPages}p</span>}
+                {day.selfCare?.length>0 && <span style={{ fontSize:10, color:"#8ab890", background:"rgba(138,184,144,.1)", padding:"2px 8px", borderRadius:8 }}>🌸 {day.selfCare.length} self care</span>}
+                {day.mood && <span style={{ fontSize:10, color:"#8b7763", background:"rgba(196,168,130,.1)", padding:"2px 8px", borderRadius:8 }}>{day.mood}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>}
       {activeTab==="trophies" && <TrophiesTab trophies={trophies} newIds={newTrophyIds}/>}
       {celebGoal && <CelebrationPopup goal={celebGoal} onClose={()=>setCelebGoal(null)}/>}
       {activeTab==="settings"&& <SettingsTab habits={habits} setHabits={setHabits} goals={goals} setGoals={setGoals} selfCarePool={scPool} setSelfCarePool={setScPool} weights={weights} setWeights={setWeights} notif={notif} setNotif={setNotif} onSignOut={onSignOut}/>}
