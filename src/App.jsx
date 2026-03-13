@@ -138,15 +138,21 @@ function calcScore(log, habits, goals, weights) {
       add("food", f === 1 ? 1 : f === 2 ? 0.65 : f === 3 ? 0.3 : 0);
   }
 
-  // Screen time — use whichever is higher: total or social media
-  // Not logged = 0 pts. Below limit = 100%. Doubles limit = 0%.
+  // Screen time — two independent components, take the WORST of what's logged:
+  //   1. total screen time vs user's limit (default 120min)
+  //   2. social media vs 60min hard limit
+  // Not logged at all = 0 pts. Below limit = full pts.
+  // Above limit: 0 pts at limit + 50% of limit (e.g. social: 0 pts at 90min)
   if (habits.includes("screenTime")) {
     const total  = log.screenTime  || 0;
     const social = log.socialMedia || 0;
-    const worst  = Math.max(total, social);
-    if (worst > 0) {
-      const limit = goals.screenTime || 120;
-      add("screenTime", worst <= limit ? 1 : Math.max(0, 1 - (worst - limit) / limit));
+    const tLimit = goals.screenTime || 120;
+    const sLimit = 60;
+    const tRatio = total  > 0 ? (total  <= tLimit ? 1 : Math.max(0, 1 - (total  - tLimit) / (tLimit * 0.5))) : null;
+    const sRatio = social > 0 ? (social <= sLimit ? 1 : Math.max(0, 1 - (social - sLimit) / (sLimit * 0.5))) : null;
+    const logged = [tRatio, sRatio].filter(r => r !== null);
+    if (logged.length > 0) {
+      add("screenTime", Math.min(...logged)); // worst component drives the score
     }
     // else: nothing logged = 0 pts (stays in denominator)
   }
@@ -1338,7 +1344,7 @@ function MainApp({ profile: init, user, onSignOut }) {
           <div style={S.ttl}>📱 screen time</div>
           <div style={S.iRow}><span style={S.lbl}>total</span><input type="number" placeholder="min" value={log.screenTime||""} onChange={e=>update("screenTime",+e.target.value)} style={{...S.inp,maxWidth:88}}/><span style={S.hint}>{fmt(log.screenTime)}</span></div>
           <div style={S.iRow}><span style={S.lbl}>social media</span><input type="number" placeholder="min" value={log.socialMedia||""} onChange={e=>update("socialMedia",+e.target.value)} style={{...S.inp,maxWidth:88}}/><span style={S.hint}>{fmt(log.socialMedia)}</span></div>
-          <div style={S.hint}>score: ≤60 min social = full points</div>
+          <div style={S.hint}>social media: full pts ≤60min · screen: full pts ≤{G.screenTime||120}min</div>
         </div>}
 
         {habits.includes("selfCare")&&<div style={S.sec}>
