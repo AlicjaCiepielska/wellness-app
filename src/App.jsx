@@ -41,7 +41,7 @@ const ALL_SELFCARE = [
 const MOOD_OPTIONS = ["✨ glowing","💪 strong","🔥 motivated","🌙 calm","😴 tired","😔 sad","😤 stressed"];
 const RUN_FEEL     = ["😩 tough","😐 okay","🙂 good","😊 great","🔥 amazing"];
 const DEFAULT_GOALS   = { water:8, steps:10000, sleep:8, learning:60, reading:20, screenTime:120, running:5 };
-const DEFAULT_WEIGHTS = { water:7, steps:6, workout:7, running:6, sleep:9, learning:6, reading:5, sweets:5, food:5, screenTime:4, selfCare:6 };
+const DEFAULT_WEIGHTS = { water:7, steps:7, workout:7, running:6, sleep:9, learning:6, reading:5, sweets:6, food:6, screenTime:7, selfCare:6 };
 const EMPTY_LOG = {
   water:0, steps:0, sweets:null, foodQuality:null,
   workout:false, workoutTypes:[],
@@ -55,31 +55,101 @@ const EMPTY_LOG = {
 // SCORE — starts at 0, only logged habits contribute
 // ─────────────────────────────────────────────────────────────
 function calcScore(log, habits, goals, weights) {
-  // totalW = ALL active scorable habits (full denominator always)
-  // earned = only from habits actually logged today
-  // This way: logging only water gives partial score, not 100%
-  const scorable = habits.filter(h => h !== "mood");
+  // ── Scoring philosophy ──────────────────────────────────────────────────
+  // Zero on start. Points only for what you've actually logged.
+  // Score = earned / totalW * 100, always in [0, 100], never negative.
+  //
+  // A) MANDATORY habits (water, steps, sleep, learning, reading, selfCare,
+  //    sweets, food, screenTime): always in denominator.
+  //    Not logged = 0 pts. You earn by logging.
+  //
+  // B) OPTIONAL habits (workout, running):
+  //    Only enter denominator if logged today.
+  //    Can never hurt your score — they're a bonus.
+  //
+  // screen time special rule: the WORSE of (total, socialMedia) is used,
+  // so logging either one is enough to get scored.
+  // ────────────────────────────────────────────────────────────────────────
+
+  if (!habits.length) return 0;
+
+  const optional = ["workout", "running"];
+  const mandatory = habits.filter(h => h !== "mood" && !optional.includes(h));
+  const opted = habits.filter(h =>
+    (h === "workout" && log.workout) ||
+    (h === "running" && (log.runKm || 0) > 0)
+  );
+
+  const scorable = [...mandatory, ...opted];
   if (!scorable.length) return 0;
+
   const totalW = scorable.reduce((sum, id) => sum + (weights[id] ?? 5), 0);
-  if (totalW === 0) return 0;
+  if (!totalW) return 0;
 
   let earned = 0;
   const add = (id, ratio) => { earned += Math.max(0, Math.min(1, ratio)) * (weights[id] ?? 5); };
 
-  if (habits.includes("water")      && log.water > 0)            add("water",      log.water / (goals.water||8));
-  if (habits.includes("steps")      && log.steps > 0)            add("steps",      log.steps / (goals.steps||10000));
-  if (habits.includes("workout")    && log.workout)              add("workout",    1);
-  if (habits.includes("running")    && log.runKm > 0)            add("running",    log.runKm / (goals.running||5));
-  if (habits.includes("sleep")      && log.sleep > 0)            add("sleep",      log.sleep / (goals.sleep||8));
-  if (habits.includes("learning")   && log.learningTime > 0)     add("learning",   (log.learningTime/(goals.learning||60)) * (0.5+((log.learningProductivity||5)/10)*0.5));
-  if (habits.includes("reading")    && log.readingPages > 0)     add("reading",    log.readingPages / (goals.reading||20));
-  if (habits.includes("sweets")     && log.sweets !== null)      add("sweets",     Math.max(0, 1 - log.sweets/4));
-  if (habits.includes("food")       && log.foodQuality !== null) add("food",       1 - (log.foodQuality-1)/4);
-  if (habits.includes("screenTime") && log.screenTime > 0) {
-    const s = log.socialMedia || 0;
-    add("screenTime", s <= 60 ? 1 : Math.max(0, 1-(s-60)/120));
+  // Water
+  if (habits.includes("water"))
+    add("water", (log.water || 0) / (goals.water || 8));
+
+  // Steps
+  if (habits.includes("steps"))
+    add("steps", (log.steps || 0) / (goals.steps || 10000));
+
+  // Sleep
+  if (habits.includes("sleep"))
+    add("sleep", (log.sleep || 0) / (goals.sleep || 8));
+
+  // Learning
+  if (habits.includes("learning"))
+    add("learning", log.learningTime > 0
+      ? (log.learningTime / (goals.learning || 60)) * (0.5 + ((log.learningProductivity || 5) / 10) * 0.5)
+      : 0);
+
+  // Reading
+  if (habits.includes("reading"))
+    add("reading", (log.readingPages || 0) / (goals.reading || 20));
+
+  // Self care — 1 ritual = 50%, 2+ = 100%
+  if (habits.includes("selfCare"))
+    add("selfCare", Math.min((log.selfCare?.length || 0) / 2, 1));
+
+  // Workout (optional)
+  if (log.workout && habits.includes("workout"))
+    add("workout", 1);
+
+  // Running (optional)
+  if ((log.runKm || 0) > 0 && habits.includes("running"))
+    add("running", Math.min(log.runKm / (goals.running || 5), 1));
+
+  // Sweets — not logged = 0 pts. 0 sweets = 100%. Each sweet -33%.
+  if (habits.includes("sweets")) {
+    const s = log.sweets;
+    if (s !== null && s !== undefined)
+      add("sweets", Math.max(0, 1 - s / 3));
+    // else: not logged = 0, stays in denominator
   }
-  if (habits.includes("selfCare") && log.selfCare?.length > 0)   add("selfCare",   Math.min(log.selfCare.length/3, 1));
+
+  // Food quality — not logged = 0 pts
+  if (habits.includes("food")) {
+    const f = log.foodQuality;
+    if (f !== null && f !== undefined)
+      add("food", f === 1 ? 1 : f === 2 ? 0.65 : f === 3 ? 0.3 : 0);
+  }
+
+  // Screen time — use whichever is higher: total or social media
+  // Not logged = 0 pts. Below limit = 100%. Doubles limit = 0%.
+  if (habits.includes("screenTime")) {
+    const total  = log.screenTime  || 0;
+    const social = log.socialMedia || 0;
+    const worst  = Math.max(total, social);
+    if (worst > 0) {
+      const limit = goals.screenTime || 120;
+      add("screenTime", worst <= limit ? 1 : Math.max(0, 1 - (worst - limit) / limit));
+    }
+    // else: nothing logged = 0 pts (stays in denominator)
+  }
 
   return Math.min(Math.round((earned / totalW) * 100), 100);
 }
@@ -1022,25 +1092,21 @@ function MainApp({ profile: init, user, onSignOut }) {
     } catch(e) { console.error("saveProf", e); }
   }, [user]); // eslint-disable-line
 
-  // ── setters that also persist ──
-  const setHabits  = v => { setHabitsS(v);   saveProf({habits:v});       };
-  const setGoals   = v => { setGoalsS(v);    saveProf({goals:v});        };
-  const setScPool  = v => { setScPoolS(v); saveProf({ selfCarePool: v }); };
-  const setWeights = v => { setWeightsS(v);  saveProf({weights:v});      };
-  const setBigGoals= v => { setBigGoalsS(v); };
-  // save bigGoals + trophies whenever they change
-  const bigGoalsRef = useRef(false);
-  useEffect(() => {
-    if (!bigGoalsRef.current) { bigGoalsRef.current=true; return; }
-    saveProf({ bigGoals });
-  }, [bigGoals]); // eslint-disable-line
-  const trophiesRef = useRef(false);
-  useEffect(() => {
-    if (!trophiesRef.current) { trophiesRef.current=true; return; }
-    saveProf({ trophies });
-  }, [trophies]); // eslint-disable-line
+  // ── setters (just update state — central effect below handles saving) ──
+  const setHabits  = v => setHabitsS(v);
+  const setGoals   = v => setGoalsS(v);
+  const setScPool  = v => setScPoolS(v);
+  const setWeights = v => setWeightsS(v);
+  const setBigGoals= v => setBigGoalsS(v);
+  const setNotif   = v => setNotifS(v);
 
-  const setNotif   = v => { setNotifS(v);    saveProf({notif:v});        };
+  // ── central save: whenever ANY profile state changes, persist the full snapshot ──
+  // Using refs ensures we always write the latest values without stale closures.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return; } // skip initial mount
+    saveProf({});
+  }, [habits, goals, scPool, weights, bigGoals, notif, trophies]); // eslint-disable-line
 
   // ── auto-detect completed goals → trigger celebration ──
   useEffect(() => {
